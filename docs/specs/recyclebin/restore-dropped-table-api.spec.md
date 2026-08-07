@@ -1,787 +1,324 @@
-# 救回誤刪的表 API Spec
+# 表救回 API 規格書
 
-> 來源 SOP：`docs/sops/recyclebin/restore-dropped-table.md`
+## 1. 概述
 
-## 概述
+本 API 供 DBA 從 Oracle 回收筒中救回誤刪的表。若原表名已被新建的表佔用，必須指定新表名以改名救回；否則以原名救回。執行前系統會檢查表的可救回性與表名衝突，救回的表保留 DROP 當下的內容。來源 SOP：`docs/sops/recyclebin/restore-dropped-table.md`。限 DBA 使用。認證由部署環境 OAuth 機制統一處理（見第 4 節）。本操作可逆：救回的表再 DROP 即回到回收筒。
 
-提供 DBA 從 Oracle 回收筒救回被誤刪的表。執行前進行三層檢查：表是否在回收筒、能否救回、表名是否衝突。支援以原名救回或指定新表名改名救回。救回的表是 DROP 當下的完整內容；相關 index 與 trigger 一併回來，但名稱由 DBA 事後自行整理。救回操作可撤銷（把救回的表再 DROP 一次即可回到回收筒）。
+## 2. 名詞定義
 
-## Endpoint 一覽
+| 名詞 | 定義 | 系統判斷方式 |
+|------|------|-----------|
+| 回收筒 | Oracle RECYCLEBIN，被 DROP 的表在空間被回收前的暫存區 | 查詢 `dba_recyclebin` 視圖中 `type = 'TABLE'` 的紀錄 |
+| 能救回 | 表對應的回收筒紀錄空間尚未被資料庫回收 | DBA_RECYCLEBIN 該筆紀錄的 CAN_UNDROP 欄位為 'YES' |
+| 原名已被佔用 | 同 schema 內現有的表已使用了目標表的原始名稱 | 查詢 `dba_tables` 確認表名存在 |
 
-| Endpoint | 說明 | 風險 |
-|----------|------|------|
-| POST /recyclebin/restore | 從回收筒救回指定的表 | 🟡 可逆 |
+## 3. Endpoint 一覽
 
-## 典型情境
+| Method | Path | 說明 | 風險 |
+|--------|------|------|------|
+| POST | `/recyclebin/restore` | 救回被誤刪的表，支援改名 | 可逆 |
 
-情境一「確認可救回、以原名救回」：
-- Given DBA 已用查詢 API 確認表在回收筒且可救回，原表名未被新表佔用
-- When 呼叫 `POST /recyclebin/restore` 的 dry_run=true 進行試算（確認無誤）
-- Then 回傳試算成功，告知會以原名救回；再以 dry_run=false 實際執行
-- Then 表成功救回，audit 記錄救回時間與人員
+## 4. 共通規範
 
-情境二「表名衝突、改名救回」：
-- Given DBA 要救表但原表名已被新建的表佔用
-- When 呼叫 `POST /recyclebin/restore` 且指定 new_table_name，dry_run=true 試算
-- Then 試算成功，確認新表名可用；改為 dry_run=false 實際執行
-- Then 表以新名救回，audit 紀錄新表名與救回人員
+**認證與授權**
 
-情境三「救回失敗、被擋（失敗情境）」：
-- Given 表不在回收筒（已被救過或輸入錯誤）
-- When 呼叫 `POST /recyclebin/restore`
-- Then 請求被擋下並回報原因（表不在回收筒），不執行任何操作
+認證與角色授權由部署環境的 OAuth 機制統一處理，不在本規格與實作範圍內，不自建 API key、不自行驗證角色。本 API 限 DBA 使用，作為部署時的授權設定需求。操作者身分取自 OAuth 認證結果；mock 模式與本機測試以 header `X-Operator` 模擬，缺席或去除空白後為空時記為 `unknown`。
 
-## 安全防護
+**Request 與 response 格式**
 
-- 僅 DBA 角色可使用；其他角色的請求於認證層直接拒絕（403）
-- 變更類操作預設僅試算（dry_run=true）；執行時先執行全部檢查並回報結果，不做實際變更；設 dry_run=false 後執行真實操作
-- 每次操作（含試算、被拒絕的 request）都留 audit 紀錄：操作者、時間、參數、結果
-- 本 API 不防護的事項：
-  - 救回後 index、trigger 名稱仍是 Oracle 自動命名（BIN$ 開頭），DBA 事後自行改名
-  - 不檢驗新表名是否符合命名規範（由 Oracle 在執行時驗證）
+- 時間欄位一律 ISO 8601 秒精度、UTC、無時區後綴（例 `2026-08-08T14:30:45`）；來源時間有微秒就截斷。
+- boolean 欄位一律出現，不以 null 或缺席表示 false。
+- 成功回應直接回資源內容，不包信封。
+- 可逆操作的 response 附復原方式說明。
 
-## 人工保留項
+**錯誤格式**
 
-| SOP 步驟 | 不自動化的原因 | API 提供的替代支援 |
-|----------|---------------|-------------------|
-| 救回後 index、trigger 改名 | Oracle 自動命名，整理方式因人而異，不適合自動化 | 回傳 recyclebin_object_name，DBA 據此查詢 index 名稱後手動改名 |
-| 選擇新表名 | DBA 基於業務邏輯決定 | API 驗證新表名有無衝突、可否使用 |
+所有 4xx/5xx 回應由統一的 exception handler 產出，格式如下。`error.code` 等於 HTTP 狀態碼；`error.status` 的值域見錯誤代碼總表；`message` 為人讀的簡述，程式判斷一律依據 `error.status`。
 
-## 簽核
-
-簽核本文件即同意「Endpoint 一覽」的範圍、「安全防護」的防護等級、「人工保留項」的保留項目。
-
----
-
-## 規格
-
-### §0 全域規則
-
-#### 認證與授權
-
-- 認證與角色授權由部署環境的 OAuth 機制統一處理，本 spec 與實作不自建 API key、不自行驗證角色
-- SOP 限制「只有 DBA 能用」：部署時配置 OAuth 授權設定，僅允許 DBA 角色呼叫本 API；其他角色請求返 403
-- 操作者身分（audit 的 actor）取自 OAuth 認證結果；mock 模式與本機測試以 header `X-Operator` 模擬，缺席或 `str.strip()` 後為空 → 記字面值 `"unknown"`
-
-#### 閘門順序
-
-```
-（認證與授權在進入服務前由 OAuth 處理，見上節）
-1. schema 驗證 → 422（pydantic：必填、型別、互斥輸入）
-2. 資源解析    → 404（request 指到的資源不存在；dry_run 也 404）
-3. 風險閘門    → （本 endpoint 為 reversible，無 irreversible 的 confirm/審批）
-4. 前置條件    → 409（領域狀態不允許）
-5. 執行
-```
-
-dry_run 的走法：
-- `dry_run=true`：跑 1–2（404 照常擲出）→ 閘門 4 的檢查**依序評估**，第一個沒過的 → 對應 HTTP 碼＋error 物件；全過 → 2xx 回應含 `"dry_run": true`。不進閘門 3、不執行。
-- `dry_run=false`：reversible 過 1–2、4 後直接執行。
-
-#### 統一 response 形狀
-
-本專案全新，採用預設格式。
-
-**HTTP 2xx（成功，含 dry_run 通過）**：直接回資源內容，無信封。
-- 操作結果 → 平鋪欄位（restored_table_name、recyclebin_object_name、restore_time）
-- dry_run 通過的 response 含 `"dry_run": true` 欄位；實際執行的回應**不帶**這個欄位
-
-**HTTP 4xx/5xx**：根目錄唯一一個 `error` 鍵：
 ```json
 {
   "error": {
-    "code": <HTTP 狀態碼>,
-    "message": "<簡述>",
-    "status": "<大寫錯誤狀態字>",
-    "details": [...]
+    "code": 409,
+    "message": "說明文字",
+    "status": "ERROR_CODE",
+    "details": []
   }
 }
 ```
 
-- `error.code` 等於 HTTP 狀態碼
-- `error.status` 值域見 §6 錯誤表
+`details` 的形狀依 `error.status` 固定：欄位驗證失敗（422）用 `[{"fieldViolations": [{"field": "...", "description": "..."}]}]`（每個違規欄位一項），其餘用 `[{"reason": "...", "metadata": {}}]`。同一個 `error.status` 永遠用同一種形狀。Audit 不儲存 details 內容。
 
-#### 前置條件權威表
+**錯誤代碼總表**
 
-| PC 編號 | 條件 | HTTP | error.status | 評估順序 |
-|---------|------|------|--------------|---------|
-| PC-1 | schema 不能為空 | 422 | INVALID_ARGUMENT | 1 |
-| PC-2 | table_name 不能為空 | 422 | INVALID_ARGUMENT | 2 |
-| PC-3 | schema 存在 | 404 | SCHEMA_NOT_FOUND | 3 |
-| PC-4 | 表在回收筒內 | 404 | TABLE_NOT_IN_RECYCLEBIN | 4 |
-| PC-5 | 表可救回（空間未被回收） | 409 | TABLE_NOT_RESTORABLE | 5 |
-| PC-6 | 原表名未被佔用或有提供 new_table_name | 409 | TABLE_NAME_CONFLICT | 6 |
-| PC-7 | new_table_name（若提供）未被佔用 | 409 | NEW_TABLE_NAME_EXISTS | 7 |
+| error.status | HTTP | 條件 | 處置建議 |
+|--------------|------|------|---------|
+| INVALID_INPUT | 422 | schema 或 table_name 為空 | 檢查輸入，補全必填欄位 |
+| SCHEMA_NOT_FOUND | 404 | schema 不存在 | 確認 schema 名稱是否正確 |
+| TABLE_NOT_IN_RECYCLEBIN | 404 | 表不在回收筒 | 確認表是否曾被 DROP；使用查詢 API 先確認 |
+| TABLE_NOT_RESTORABLE | 409 | 表無法救回（空間已被回收等） | 查詢 API 確認 can_restore，若為 false 則無法救回 |
+| TABLE_NAME_CONFLICT | 409 | 原名被佔用、未提供 new_table_name | 檢查原表名是否被現有的表佔用，若是請提供 new_table_name |
+| NEW_TABLE_NAME_EXISTS | 409 | 新表名與現有的表同名 | 提供不同的 new_table_name |
+| DATABASE_CONNECTION_ERROR | 503 | 連不上 Oracle | 檢查資料庫連線，稍後重試 |
+| DATABASE_TIMEOUT | 504 | Oracle 操作逾時 | 檢查資料庫負載，稍後重試 |
+| RESTORE_VERIFICATION_FAILED | 500 | 救回後驗證未通過（資料庫異常） | 人工檢查資料庫狀態後重試 |
 
-PC-6 與 PC-7 的區別：
-- PC-6 檢查原表名是否已被現有表佔用；若被佔用且未提供 new_table_name → 409 TABLE_NAME_CONFLICT
-- PC-7 檢查若有提供 new_table_name，該名稱是否已被現有表佔用；若被佔用 → 409 NEW_TABLE_NAME_EXISTS
+## 5. POST /recyclebin/restore
 
-#### 常數與佔位符
+**說明**
 
-本 API 為 reversible endpoint，無 irreversible 的 confirm/approval 需求。
+救回被誤刪的表。若原表名已被現有的表佔用，必須提供 `new_table_name` 以改名救回；否則以原名救回。執行前系統先檢查表是否在回收筒、能否救回、表名衝突。執行成功後，表出現在該 schema 內，回收筒紀錄消失。可通過再 DROP 該表回復到救回前的狀態。
 
-#### 型別與行為約定
+**Request**
 
-- 時間欄位一律 ISO8601 秒精度 naive UTC（無微秒、無 Z、無時區後綴）；例：`2026-08-08T14:30:45`
-- boolean 欄位一律出現，不以 null 或缺席表示 false
-- 大小寫不敏感：schema、table_name、new_table_name 輸入任意大小寫，系統內部統一轉為大寫查詢與執行；response 中 restored_table_name 以實際使用的名稱回傳（原名大小寫或新名提供時的大小寫）
-- 冪等性：同一 request（相同 schema、table_name、new_table_name）重複執行
-  - 第一次成功：表被救回，audit 記錄成功
-  - 第二次執行：表已不在回收筒（PC-4 失敗）→ 404 TABLE_NOT_IN_RECYCLEBIN；audit 記錄失敗
-  - 若該表其後再被 DROP，第三次執行救的是新的那筆紀錄，屬正常流程
-- 中斷復原：救回執行到一半連線中斷，Oracle 指令要嘛完成、要嘛未執行（不停在中間狀態）
-  - DBA 重新執行即可；重新執行時系統會再次檢查表是否在回收筒，按前置條件評估
+| 欄位 | 型別 | 必填 | 預設 | 說明 |
+|------|------|------|------|------|
+| schema | string | 是 | — | 表所屬的 schema（大小寫不敏感） |
+| table_name | string | 是 | — | 原始表名（大小寫不敏感） |
+| new_table_name | string | 否 | — | 改名救回時的新表名；原名未被佔用可不提供；大小寫不敏感，長度限制同 Oracle 表名 |
 
-### §1 Domain Model
+範例 1（以原名救回）：
+```json
+{
+  "schema": "scott",
+  "table_name": "emp"
+}
+```
 
-#### 請求欄位
-
-| 欄位 | 型態 | 必填 | 說明 |
-|------|------|------|------|
-| schema | string | 是 | 表所屬的 schema；不能為空或純空白；大小寫不敏感 |
-| table_name | string | 是 | 原始表名；不能為空或純空白；大小寫不敏感 |
-| new_table_name | string \| null | 否 | 改名救回時的新表名；原名被佔用時必填；不能為空或純空白（若提供）；大小寫不敏感 |
-| dry_run | boolean | 否 | 預設值 true；true 時試算不執行，false 時實際執行 |
-
-#### Response 欄位
-
-| 欄位 | 型態 | 說明 |
-|------|------|------|
-| restored_table_name | string | 實際救回使用的表名（原名或新名），以實際使用的大小寫回傳 |
-| recyclebin_object_name | string | 原本在回收筒內的物件名，以 `BIN$` 開頭 |
-| restore_time | string (ISO8601) | 救回時間，秒精度 UTC；dry_run=true 時該欄位表示試算完成時間（未實際執行） |
-| dry_run | boolean | （僅在 dry_run=true 時出現）試算狀態標記 |
-
-### §2 Endpoints 總表 ＋ 狀態機
-
-| Method | Path | 風險 | AC 前綴 | SOP 章節 |
-|--------|------|------|--------|---------|
-| POST | /recyclebin/restore | 🟡 可逆 | FD | 救回誤刪的表 |
-
-無狀態機（單一表的救回操作不涉及狀態轉移）。
-
-### §3 各 endpoint 驗收準則
-
-#### POST /recyclebin/restore
-
-**Request Body (JSON):**
-
+範例 2（改名救回）：
 ```json
 {
   "schema": "scott",
   "table_name": "emp",
-  "new_table_name": null,
-  "dry_run": true
+  "new_table_name": "emp_restored"
 }
 ```
 
----
+**處理流程**
 
-**AC-FD-1：試算、原名未被佔用、可救回**
+1. **欄位驗證**：schema 和 table_name 經 str.strip() 後皆不為空 → 通過；否則回 422 INVALID_INPUT。JSON null 或未提供欄位視同缺席。若提供 new_table_name，經 str.strip() 後不為空 → 通過；提供但為空（包括空字串）則回 422 INVALID_INPUT。
 
-WHEN 呼叫 `POST /recyclebin/restore` 且 dry_run=true，表在回收筒、可救回、原名未被佔用  
-THE SYSTEM SHALL 回傳 200，response：
-- `dry_run`: true
-- `restored_table_name`: "emp"（原名）
-- `recyclebin_object_name`: "BIN$..."（回收筒物件名）
-- `restore_time`: 試算完成時間（未實際執行，無表被建立）
+2. **Schema 存在性檢查**：查詢資料庫確認 schema 存在 → 通過；不存在回 404 SCHEMA_NOT_FOUND。
 
-驗證方法：audit 記錄 result=`dry_run`；表未出現在 schema 中。
+3. **回收筒存在性檢查**：查詢資料庫確認表在回收筒內 → 通過；不在回 404 TABLE_NOT_IN_RECYCLEBIN。同一表若被 DROP 多次、回收筒有多筆紀錄，定位最新掉進回收筒的那一筆（以 DROPTIME 由新到舊，相同時以 recyclebin_object_name 字典序由大到小）。輸入的識別字（去除空白後）於系統內部轉為大寫後比對；回傳的表名為 Oracle 實際儲存值（大寫）。
 
+4. **可救回性檢查**：檢查回收筒紀錄的 CAN_UNDROP 欄位，確認為 'YES' → 通過；為 'NO' 回 409 TABLE_NOT_RESTORABLE，details 的 reason 為 `SPACE_RECLAIMED`。
+
+5. **表名衝突檢查**：
+   - 檢查原表名是否被現有的表佔用：
+     - 未被佔用 → 通過；若提供 new_table_name 則忽略。
+     - 被佔用 → 檢查是否提供 new_table_name：
+       - 未提供 → 回 409 TABLE_NAME_CONFLICT。
+       - 已提供 → 檢查 new_table_name 是否與該 schema 現有的表同名：
+         - 不同名 → 通過。
+         - 同名 → 回 409 NEW_TABLE_NAME_EXISTS。
+
+6. **執行救回**：執行 Oracle FLASHBACK TABLE 指令。若需改名，指令為 `FLASHBACK TABLE <schema>."<recyclebin_object_name>" TO BEFORE DROP RENAME TO <UPPER(new_table_name)>`；否則 `FLASHBACK TABLE <schema>."<recyclebin_object_name>" TO BEFORE DROP`。RENAME TO 目標名不帶 schema 前綴，用轉大寫後的新名。此步驟前的所有檢查均通過、無副作用。
+
+7. **驗證**：確認表在 schema 內查得到、回收筒內該筆紀錄已消失 → 操作成功。驗證未通過（FLASHBACK 未回報錯誤但表查不到或回收筒紀錄仍在，屬資料庫異常，正常情況不會發生）→ 回 500，error.status = RESTORE_VERIFICATION_FAILED。
+
+**Response**
+
+成功範例：
 ```json
 {
-  "dry_run": true,
-  "restored_table_name": "emp",
-  "recyclebin_object_name": "BIN$abcd1234efgh5678ijkl9012",
+  "restored_table_name": "EMP",
+  "recyclebin_object_name": "BIN$abc123==",
   "restore_time": "2026-08-08T14:30:45"
 }
 ```
 
-**AC-FD-2：實際執行、原名未被佔用、成功救回**
-
-WHEN 呼叫 `POST /recyclebin/restore` 且 dry_run=false，表在回收筒、可救回、原名未被佔用  
-THE SYSTEM SHALL 回傳 200，response：
-- `restored_table_name`: "emp"
-- `recyclebin_object_name`: 回收筒物件名
-- `restore_time`: 實際救回時間
-- **不含** `dry_run` 欄位
-
-驗證方法：audit 記錄 result=`success`；表出現在 schema 中；回收筒紀錄消失。
-
+改名救回成功範例：
 ```json
 {
-  "restored_table_name": "emp",
-  "recyclebin_object_name": "BIN$abcd1234efgh5678ijkl9012",
-  "restore_time": "2026-08-08T14:30:46"
+  "restored_table_name": "EMP_RESTORED",
+  "recyclebin_object_name": "BIN$abc123==",
+  "restore_time": "2026-08-08T14:30:45"
 }
 ```
 
-**AC-FD-3：試算、原名被佔用、提供新表名、新名未被佔用**
+欄位說明：
 
-WHEN 呼叫 `POST /recyclebin/restore` 且 dry_run=true，原名被新表佔用、提供 new_table_name 且該名未被佔用  
-THE SYSTEM SHALL 回傳 200，response：
-- `dry_run`: true
-- `restored_table_name`: 所提供的新表名
-- `restore_time`: 試算完成時間
-
-```json
-{
-  "dry_run": true,
-  "restored_table_name": "emp_restored",
-  "recyclebin_object_name": "BIN$...",
-  "restore_time": "2026-08-08T14:30:47"
-}
-```
-
-**AC-FD-4：實際執行、以新名救回**
-
-WHEN 呼叫 `POST /recyclebin/restore` 且 dry_run=false，原名被佔用、指定 new_table_name  
-THE SYSTEM SHALL 回傳 200，response：
-- `restored_table_name`: 新表名
-- **不含** `dry_run` 欄位
-- 表以新名出現在 schema 中
-
-```json
-{
-  "restored_table_name": "emp_restored",
-  "recyclebin_object_name": "BIN$abcd1234efgh5678ijkl9012",
-  "restore_time": "2026-08-08T14:30:48"
-}
-```
-
-**AC-FD-5：表不在回收筒**
-
-WHEN 呼叫 `POST /recyclebin/restore`（任何 dry_run 值），表不在回收筒  
-THE SYSTEM SHALL 回傳 404，error.status = `TABLE_NOT_IN_RECYCLEBIN`
-
-```json
-{
-  "error": {
-    "code": 404,
-    "message": "表不在回收筒",
-    "status": "TABLE_NOT_IN_RECYCLEBIN",
-    "details": []
-  }
-}
-```
-
-驗證方法：audit 記錄 result=`rejected:TABLE_NOT_IN_RECYCLEBIN`；無操作發生。
-
-**AC-FD-6：表在回收筒但空間已被回收、不可救回**
-
-WHEN 呼叫 `POST /recyclebin/restore`，表在回收筒但無法救回（空間已被資料庫回收）  
-THE SYSTEM SHALL 回傳 409，error.status = `TABLE_NOT_RESTORABLE`
-
-```json
-{
-  "error": {
-    "code": 409,
-    "message": "表無法救回",
-    "status": "TABLE_NOT_RESTORABLE",
-    "details": [
-      {
-        "reason": "SPACE_RECLAIMED",
-        "metadata": {}
-      }
-    ]
-  }
-}
-```
-
-驗證方法：audit 記錄 result=`rejected:TABLE_NOT_RESTORABLE`；無操作發生。
-
-**AC-FD-7：schema 不存在**
-
-WHEN 呼叫 `POST /recyclebin/restore`，schema 不存在  
-THE SYSTEM SHALL 回傳 404，error.status = `SCHEMA_NOT_FOUND`
-
-```json
-{
-  "error": {
-    "code": 404,
-    "message": "schema 不存在",
-    "status": "SCHEMA_NOT_FOUND",
-    "details": []
-  }
-}
-```
-
-**AC-FD-8：原名被佔用、未提供 new_table_name**
-
-WHEN 呼叫 `POST /recyclebin/restore`，原表名已被現有表佔用、且 new_table_name 為 null 或未提供  
-THE SYSTEM SHALL 回傳 409，error.status = `TABLE_NAME_CONFLICT`
-
-```json
-{
-  "error": {
-    "code": 409,
-    "message": "原名已被佔用，請提供新表名",
-    "status": "TABLE_NAME_CONFLICT",
-    "details": [
-      {
-        "reason": "original_name_exists",
-        "metadata": {}
-      }
-    ]
-  }
-}
-```
-
-驗證方法：audit 記錄 result=`rejected:TABLE_NAME_CONFLICT`；無操作發生。
-
-**AC-FD-9：新表名已被現有表佔用**
-
-WHEN 呼叫 `POST /recyclebin/restore`，提供的 new_table_name 已被現有表佔用  
-THE SYSTEM SHALL 回傳 409，error.status = `NEW_TABLE_NAME_EXISTS`
-
-```json
-{
-  "error": {
-    "code": 409,
-    "message": "新表名已存在，請改用其他名稱",
-    "status": "NEW_TABLE_NAME_EXISTS",
-    "details": [
-      {
-        "reason": "new_name_exists",
-        "metadata": {}
-      }
-    ]
-  }
-}
-```
-
-驗證方法：audit 記錄 result=`rejected:NEW_TABLE_NAME_EXISTS`；無操作發生。
-
-**AC-FD-10：同一表被 DROP 多次、救最新的**
-
-WHEN 呼叫 `POST /recyclebin/restore`，table_name 在回收筒有多筆紀錄（多次 DROP）  
-THE SYSTEM SHALL 救**最新**掉進回收筒的那一筆，其他舊紀錄保留
-
-驗證方法：確認救回的是最新的那筆（recyclebin_object_name 與時間對應最新紀錄）。
-
-**AC-FD-11：大小寫不敏感**
-
-WHEN 呼叫 `POST /recyclebin/restore` 且 schema=scott，table_name=EMP（大寫）  
-THE SYSTEM SHALL 照常查詢並救回，restored_table_name 以提供的大小寫回傳
-
-**AC-FD-12：schema 參數為空或純空白**
-
-WHEN 呼叫 `POST /recyclebin/restore`，schema 為空或純空白  
-THE SYSTEM SHALL 回傳 422，error.status = `INVALID_ARGUMENT`
-
-```json
-{
-  "error": {
-    "code": 422,
-    "message": "schema 不能為空",
-    "status": "INVALID_ARGUMENT",
-    "details": [
-      {
-        "fieldViolations": [
-          {
-            "field": "schema",
-            "description": "必填欄位"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**AC-FD-13：table_name 參數為空或純空白**
-
-WHEN 呼叫 `POST /recyclebin/restore`，table_name 為空或純空白  
-THE SYSTEM SHALL 回傳 422，error.status = `INVALID_ARGUMENT`
-
-**AC-FD-14：new_table_name 提供但為空或純空白**
-
-WHEN 呼叫 `POST /recyclebin/restore`，new_table_name 提供了但為空或純空白  
-THE SYSTEM SHALL 回傳 422，error.status = `INVALID_ARGUMENT`
-
-**AC-FD-15：冪等性 — 救回後重複執行**
-
-WHEN 表已成功救回、再以相同參數呼叫 `POST /recyclebin/restore`  
-THE SYSTEM SHALL 回傳 404，error.status = `TABLE_NOT_IN_RECYCLEBIN`（表已不在回收筒）
-
-驗證方法：audit 記錄第二次執行為失敗；表仍存在於 schema 中。
-
-**AC-FD-16：中斷復原 — 救回成功但連線中斷報告失敗**
-
-WHEN 救回執行到一半連線中斷  
-THE SYSTEM SHALL（由 Oracle 的原子性保證）要嘛完全成功、要嘛完全未執行，不停在中間狀態
-
-DBA 重新執行請求時：
-- 若救回已成功（表已在 schema 中）→ 再次執行回 404 TABLE_NOT_IN_RECYCLEBIN（冪等性）
-- 若救回未成功（表仍在回收筒）→ 正常重試
-
-**AC-FD-17：Infrastructure 錯誤 — 連線失敗**
-
-WHEN Oracle 連線失敗  
-THE SYSTEM SHALL 回傳 503，error.status = `SERVICE_UNAVAILABLE`
-
-```json
-{
-  "error": {
-    "code": 503,
-    "message": "連線失敗，請稍後重試",
-    "status": "SERVICE_UNAVAILABLE",
-    "details": [
-      {
-        "reason": "connection",
-        "metadata": {}
-      }
-    ]
-  }
-}
-```
-
-驗證方法：audit 記錄 result=`error:SERVICE_UNAVAILABLE`；無操作發生。
-
-**AC-FD-18：Infrastructure 錯誤 — 執行逾時**
-
-WHEN Oracle 執行逾時（>30 秒）  
-THE SYSTEM SHALL 回傳 504，error.status = `GATEWAY_TIMEOUT`
-
-```json
-{
-  "error": {
-    "code": 504,
-    "message": "操作逾時，請稍後重試",
-    "status": "GATEWAY_TIMEOUT",
-    "details": [
-      {
-        "reason": "timeout",
-        "metadata": {}
-      }
-    ]
-  }
-}
-```
-
-### §4 三層架構對應
-
-#### 目錄結構
-
-```
-restore-dropped-table-api/
-├── main.py                 # FastAPI 應用入口、路由定義
-├── models/
-│   └── schemas.py         # Pydantic model、request/response 結構、常數定義
-├── service/
-│   └── restore.py         # 業務邏輯、前置條件檢查、錯誤判定、復原邏輯
-├── repository/
-│   └── oracle.py          # Oracle 連線、FLASHBACK 執行、表名衝突檢查
-├── mock.py                # Mock 模式的 repository 實作
-├── tests/
-│   ├── conftest.py        # pytest 共用設定、fixture、環境變數預設
-│   └── test_api.py        # 各 AC 對應測試
-├── README.md              # 快速啟動、endpoint 一覽、curl 實走例、環境變數表
-└── .env.example           # 環境變數範本
-```
-
-#### Repository 介面（Oracle 實作與 Mock 實作）
-
-**方法簽名與 docstring**
-
-```python
-class OracleRepository:
-    """
-    Oracle FLASHBACK 與表名衝突檢查實作
-    """
-    
-    def check_schema_exists(self, schema: str) -> bool:
-        """
-        檢查 schema 是否存在
-        
-        原始 SQL：
-          SELECT 1 FROM dba_users WHERE username = UPPER(?) FETCH FIRST 1 ROW ONLY
-        
-        :param schema: schema 名稱（大小寫不敏感）
-        :return: 存在返 True，否則 False
-        :raises InfraError: 連線失敗或查詢逾時
-        """
-    
-    def check_table_in_recyclebin(self, schema: str, table_name: str) -> dict | None:
-        """
-        檢查表是否在回收筒且可救回
-        
-        can_restore 判定：CAN_UNDROP = 'YES' 時回傳 True；反之 False
-        
-        原始 SQL（取最新紀錄）：
-          SELECT OWNER, OBJECT_NAME, ORIGINAL_NAME, DROPTIME, CAN_UNDROP 
-          FROM DBA_RECYCLEBIN 
-          WHERE OWNER = UPPER(:schema) AND UPPER(ORIGINAL_NAME) = UPPER(:table_name) AND TYPE = 'TABLE' 
-          ORDER BY DROPTIME DESC, OBJECT_NAME DESC FETCH FIRST 1 ROW ONLY
-        
-        :param schema: schema 名稱
-        :param table_name: 表名
-        :return: 若在回收筒回傳 dict with keys {recyclebin_object_name, drop_time, can_restore}；
-                 否則回傳 None
-        :raises InfraError: 連線失敗或查詢逾時
-        """
-    
-    def check_table_name_exists(self, schema: str, table_name: str) -> bool:
-        """
-        檢查現有表中是否已存在該表名
-        
-        原始 SQL：
-          SELECT 1 FROM DBA_TABLES 
-          WHERE OWNER = UPPER(:schema) AND TABLE_NAME = UPPER(:table_name) 
-          FETCH FIRST 1 ROW ONLY
-        
-        :param schema: schema 名稱
-        :param table_name: 表名
-        :return: 存在返 True，否則 False
-        :raises InfraError: 連線失敗或查詢逾時
-        """
-    
-    def restore_table(self, schema: str, table_name: str, new_table_name: str | None) -> dict:
-        """
-        執行表的救回操作
-        
-        原始指令：
-          若 new_table_name 為 None（以原名救回）：
-            FLASHBACK TABLE <owner>.<table_name> TO BEFORE DROP
-          若 new_table_name 有提供（改名救回）：
-            FLASHBACK TABLE <owner>.<table_name> TO BEFORE DROP RENAME TO <new_table_name>
-        
-        執行完畢後確認：
-          SELECT TABLE_NAME FROM DBA_TABLES 
-          WHERE OWNER = UPPER(:schema) AND TABLE_NAME = UPPER(:actual_name)
-          
-          SELECT 1 FROM DBA_RECYCLEBIN 
-          WHERE OWNER = UPPER(:schema) AND ORIGINAL_NAME = UPPER(:table_name)
-        
-        :param schema: schema 名稱
-        :param table_name: 原表名
-        :param new_table_name: 新表名（若為 None 使用原名）
-        :return: dict with keys {restored_table_name, recyclebin_object_name, restore_time}
-        :raises InfraError: 連線失敗或執行逾時
-        """
-```
-
-**Repository 永不擲業務錯誤**：
-- 查無 → 回 None（由 service 判定為對應錯誤）
-- 表名衝突檢查失敗 → 回 False（由 service 判定為 409）
-- Oracle 連線失敗 / 逾時 → 擲 `InfraError(reason='connection')` 或 `InfraError(reason='timeout')`
-
-#### Mock 初始狀態
-
-```python
-# mock.py
-
-MOCK_RECYCLEBIN_DATA = {
-    "SCOTT": {
-        "EMP": {
-            "recyclebin_object_name": "BIN$abcd1234efgh5678ijkl9012",
-            "drop_time": "2026-08-08T14:30:45",
-            "can_undrop": "YES"
-        }
-    }
-}
-
-MOCK_EXISTING_TABLES = {
-    "SCOTT": {
-        "DEPT",  # 現有表，EMP_RESTORED 不存在
-        "SALGRADE"
-    }
-}
-
-class MockRepository:
-    def check_schema_exists(self, schema: str) -> bool:
-        return schema.upper() in MOCK_RECYCLEBIN_DATA
-    
-    def check_table_in_recyclebin(self, schema: str, table_name: str) -> dict | None:
-        schema_upper = schema.upper()
-        table_upper = table_name.upper()
-        
-        if schema_upper not in MOCK_RECYCLEBIN_DATA:
-            return None
-        
-        if table_upper not in MOCK_RECYCLEBIN_DATA[schema_upper]:
-            return None
-        
-        record = MOCK_RECYCLEBIN_DATA[schema_upper][table_upper]
-        can_restore = record["can_undrop"] == "YES"
-        return {
-            "recyclebin_object_name": record["recyclebin_object_name"],
-            "drop_time": record["drop_time"],
-            "can_restore": can_restore
-        }
-    
-    def check_table_name_exists(self, schema: str, table_name: str) -> bool:
-        schema_upper = schema.upper()
-        table_upper = table_name.upper()
-        return table_upper in MOCK_EXISTING_TABLES.get(schema_upper, set())
-    
-    def restore_table(self, schema: str, table_name: str, new_table_name: str | None) -> dict:
-        schema_upper = schema.upper()
-        table_upper = table_name.upper()
-        
-        # 從 recyclebin 移除（模擬 Oracle 行為）
-        if schema_upper in MOCK_RECYCLEBIN_DATA and table_upper in MOCK_RECYCLEBIN_DATA[schema_upper]:
-            record = MOCK_RECYCLEBIN_DATA[schema_upper].pop(table_upper)
-        
-        # 加到現有表列表
-        actual_name = new_table_name or table_name
-        if schema_upper not in MOCK_EXISTING_TABLES:
-            MOCK_EXISTING_TABLES[schema_upper] = set()
-        MOCK_EXISTING_TABLES[schema_upper].add(actual_name.upper())
-        
-        return {
-            "restored_table_name": actual_name,
-            "recyclebin_object_name": record.get("recyclebin_object_name", "BIN$..."),
-            "restore_time": "2026-08-08T14:30:46"
-        }
-```
-
-### §5 設定
-
-| 環境變數 | 預設值 | 合法範圍 | 讀取時機 | 說明 |
-|---------|--------|---------|---------|------|
-| `MOCK_RESTORE_DROPPED_TABLE` | `true` | `true` \| `false` | 啟動時 | 是否使用 mock 模式 |
-| `ORACLE_HOST` | （無） | 非空字串 | 啟動時 | Oracle 伺服器主機；MOCK=false 時必填 |
-| `ORACLE_PORT` | `1521` | 正整數 | 啟動時 | Oracle 伺服器連線埠 |
-| `ORACLE_SID` | （無） | 非空字串 | 啟動時 | Oracle database SID；MOCK=false 時必填 |
-| `ORACLE_USER` | （無） | 非空字串 | 啟動時 | 連線使用者；MOCK=false 時必填 |
-| `ORACLE_PASSWORD` | （無） | 非空字串 | 啟動時 | 連線密碼；MOCK=false 時必填 |
-| `RESTORE_TIMEOUT_SEC` | `30` | 正整數 | 啟動時 | 單一救回操作的超時秒數 |
-
-### §6 錯誤模型
-
-| error_code | 條件 | HTTP | 前置條件編號 | 處置建議 |
-|------------|------|------|------------|---------|
-| INVALID_ARGUMENT | schema、table_name、new_table_name 為空或純空白 | 422 | PC-1、PC-2 | 檢查輸入值 |
-| SCHEMA_NOT_FOUND | schema 不存在於 Oracle 中 | 404 | PC-3 | 確認 schema 名稱拼寫 |
-| TABLE_NOT_IN_RECYCLEBIN | 表不在回收筒（已救回或輸入錯誤） | 404 | PC-4 | 用查詢 API 確認表是否在回收筒 |
-| TABLE_NOT_RESTORABLE | 表在回收筒但無法救回（空間已被回收） | 409 | PC-5 | 確認應用其他解決方案（e.g. 從備份恢復） |
-| TABLE_NAME_CONFLICT | 原表名已被現有表佔用、未提供 new_table_name | 409 | PC-6 | 提供 new_table_name 改名救回 |
-| NEW_TABLE_NAME_EXISTS | 所提供的 new_table_name 已被現有表佔用 | 409 | PC-7 | 更換新表名 |
-| SERVICE_UNAVAILABLE | Oracle 連線失敗 | 503 | — | 檢查網路連線與 Oracle 狀態，稍後重試 |
-| GATEWAY_TIMEOUT | 救回操作耗時超過限制（30 秒） | 504 | — | 檢查 Oracle 狀態，稍後重試 |
-
-### §7 Audit
-
-#### Schema
-
-| 欄位 | 型態 | 說明 |
+| 欄位 | 型別 | 說明 |
 |------|------|------|
-| operation_id | string (UUID) | 唯一操作識別碼，由系統自動生成 |
-| operator | string | 操作者身分（來自 OAuth 認證或 X-Operator header） |
-| operation | string | 固定值：`RESTORE_DROPPED_TABLE` |
-| timestamp | string (ISO8601) | 操作時間，秒精度 UTC |
-| request_schema | string | 請求的 schema（記使用者原始輸入，不轉大寫） |
-| request_table_name | string | 請求的原表名（記使用者原始輸入，不轉大寫） |
-| request_new_table_name | string \| null | 請求的新表名（若有；記使用者原始輸入，不轉大寫） |
-| request_dry_run | boolean | 請求的 dry_run 值 |
-| result_status | string | `success` / `dry_run` / `rejected:<error.status>` / `error:<msg>` |
-| error_status | string \| null | 若結果為失敗，記錄 error.status；否則為 null |
-| restored_table_name | string \| null | 成功時的實際救回表名；失敗時為 null |
+| restored_table_name | string | 實際救回使用的表名（原名或新名），Oracle 實際儲存值（大寫） |
+| recyclebin_object_name | string | 救回的表在回收筒內的原始物件名（BIN$ 開頭） |
+| restore_time | string | FLASHBACK 執行成功、完成驗證時的系統時間，ISO 8601 格式 |
 
-#### 寫入時機
+*復原方式*：救回的表已出現在 schema 內，可執行 `DROP TABLE <schema>.<restored_table_name>` 將其重新放入回收筒，達到救回前的狀態。
 
-**規則**（照抄）：schema 驗證失敗（422）不留；其餘每個 request 恰好一筆。
-- 包括：試算成功（dry_run=true）、實際救回成功、失敗（404/409/503/504）
+**錯誤**
 
-#### Result 封閉枚舉
+本 endpoint 適用的錯誤代碼：INVALID_INPUT、SCHEMA_NOT_FOUND、TABLE_NOT_IN_RECYCLEBIN、TABLE_NOT_RESTORABLE、TABLE_NAME_CONFLICT、NEW_TABLE_NAME_EXISTS、DATABASE_CONNECTION_ERROR、DATABASE_TIMEOUT。
 
-本 endpoint 可能的 result 值：
+**行為細節**
 
-| 值 | 情況 | 何時記錄 |
-|-------|------|---------|
-| `dry_run` | 試算成功（dry_run=true，通過所有前置條件） | dry_run=true 時 |
-| `success` | 實際救回成功（dry_run=false，操作完成） | dry_run=false 且無錯誤時 |
-| `rejected:TABLE_NOT_IN_RECYCLEBIN` | 表不在回收筒 | PC-4 失敗 |
-| `rejected:TABLE_NOT_RESTORABLE` | 表無法救回 | PC-5 失敗 |
-| `rejected:TABLE_NAME_CONFLICT` | 原名被佔用且未提供新名 | PC-6 失敗 |
-| `rejected:NEW_TABLE_NAME_EXISTS` | 新名已被佔用 | PC-7 失敗 |
-| `rejected:SCHEMA_NOT_FOUND` | schema 不存在 | PC-3 失敗 |
-| `rejected:INVALID_ARGUMENT` | 輸入驗證失敗 | PC-1 或 PC-2 失敗 |
-| `error:SERVICE_UNAVAILABLE` | Oracle 連線失敗 | 基礎設施錯誤 |
-| `error:GATEWAY_TIMEOUT` | 操作逾時 | 基礎設施錯誤 |
+*冪等性*：救回後該筆回收筒紀錄消失，再以相同參數執行會被擋下回 404 TABLE_NOT_IN_RECYCLEBIN；若原表隨後又被 DROP，則救回的是新紀錄，屬正常流程。
 
-#### 儲存機制
+*並發*：兩個 request 同時救回同一表時，先執行者成功、後執行者被擋下回 404 TABLE_NOT_IN_RECYCLEBIN（回收筒紀錄已消失）。若執行 FLASHBACK 時該筆紀錄已被另一請求救走，Oracle 回錯誤，映射為 404 TABLE_NOT_IN_RECYCLEBIN，audit 記 rejected:TABLE_NOT_IN_RECYCLEBIN。實作無額外並發防護，原因是 Oracle 的 FLASHBACK 操作原子性由資料庫保證，且回收筒紀錄唯一性由 Oracle 維護。
 
-- **Mock 模式**：repository 內記憶體 list（`MockRepository.audit_log: list[AuditRecord]`），測試可讀斷言
-- **真實後端**：由使用者指定，本 spec 未定義——列入未決事項
+*執行中斷*：若 Oracle 在執行途中斷線或逾時，FLASHBACK 指令要嘛完全執行、要嘛完全未執行，不會停在中間狀態（由 Oracle 事務特性保證）。錯誤時回傳 503 DATABASE_CONNECTION_ERROR 或 504 DATABASE_TIMEOUT；DBA 可重新執行，系統會再次檢查表是否在回收筒、能否救回。Audit 記錄該次 request 的失敗狀態。
 
-### §8 測試計畫
+*耗時與時間*：sync 模式，預期耗時秒級內（取決於表大小與資料庫負載）。操作超過 60 秒時 Oracle 驅動將逾時，回傳 504。時間處理：截斷表示捨去小數部分，不進位；Oracle 回傳的時間視為 UTC，不做時區轉換。
 
-#### 測試範疇
+## 6. Audit
 
-每條 AC ≥1 測試、測試名含 AC 編號；dry_run vs. 實際執行兩類；audit 各類 result 至少一次；冪等性驗證。
+除格式驗證失敗（422）外，每個 request 恰好記錄一筆 audit，包括被前置檢查擋下與基礎設施錯誤的情形。
 
-#### Conftest
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| operation_id | string | 唯一識別符（UUID） |
+| operator | string | 操作者身分。正式環境取自 OAuth 認證，忽略 X-Operator；僅 mock 模式讀 X-Operator header，缺席或去除空白後為空時記為 `unknown` |
+| operation | string | 操作名稱，固定為 `recyclebin_restore` |
+| target | string | 操作對象：`<schema>.<table_name>` |
+| request_params | object | 原始請求參數：`{"schema": "...", "table_name": "...", "new_table_name": "..."}` |
+| timestamp | string | request 處理完成時間，ISO 8601 格式 |
+| result | string | 結果枚舉：`success` / `rejected:<error.status>` / `error:<error.status>` |
+| error_status | string | 若 result 為 rejected 或 error，記錄對應的 error.status 值（純代碼，無前綴） |
+
+result 的值域及 error_status 對應：
+- `success`：表救回成功；error_status 空白
+- `rejected:INVALID_INPUT`：422、`rejected:SCHEMA_NOT_FOUND`：404、`rejected:TABLE_NOT_IN_RECYCLEBIN`：404、`rejected:TABLE_NOT_RESTORABLE`：409、`rejected:TABLE_NAME_CONFLICT`：409、`rejected:NEW_TABLE_NAME_EXISTS`：409
+- `error:DATABASE_CONNECTION_ERROR`：503、`error:DATABASE_TIMEOUT`：504、`error:RESTORE_VERIFICATION_FAILED`：500
+
+Audit 不儲存 details 內容。
+
+
+## 7. 架構與實作要求
+
+**三層架構**
+
+- **API 層**：`api/recyclebin.py`，路由定義與 request 驗證。
+- **Service 層**：`service/recyclebin_service.py`，業務規則（表名衝突判定、救回執行、驗證）、前置檢查順序、audit 記錄。
+- **Repository 層**：`repository/recyclebin_repository.py` 與 `repository/recyclebin_repository_mock.py`，Oracle 連線與操作；mock 版本提供內記憶體實現，以 `MOCK_RECYCLEBIN` 環境變數切換。
+
+**Repository 介面**
 
 ```python
-# tests/conftest.py
-
-import os
-import sys
-from pathlib import Path
-
-os.environ.setdefault("MOCK_RESTORE_DROPPED_TABLE", "true")
-os.environ.setdefault("RESTORE_TIMEOUT_SEC", "0")
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-@pytest.fixture(autouse=True)
-def reset_singletons():
-    """重設單例與 mock 狀態"""
-    # 以深拷貝的初始狀態重建 MOCK_RECYCLEBIN_DATA 與 MOCK_EXISTING_TABLES，並清空 audit list
-    # 各測試需要自行操縱 mock 狀態（添加或移除表）
-    pass
+class RecyclebinRepository:
+    def schema_exists(self, schema: str) -> bool:
+        """
+        檢查 schema 是否存在。
+        
+        原始指令：SELECT COUNT(*) FROM DBA_USERS 
+          WHERE USERNAME = UPPER(:schema)
+        
+        回傳 True 若 schema 存在。
+        """
+        pass
+    
+    def get_table_in_recyclebin(self, schema: str, table_name: str) -> dict | None:
+        """
+        查詢指定 schema 下、特定原始表名在回收筒內的最新紀錄。
+        
+        原始指令：SELECT object_name, DROPTIME, can_undrop 
+          FROM dba_recyclebin 
+          WHERE type = 'TABLE' 
+          AND UPPER(owner) = UPPER(:schema) 
+          AND UPPER(original_name) = UPPER(:table_name) 
+          ORDER BY DROPTIME DESC, object_name DESC FETCH FIRST 1 ROW ONLY
+        
+        回傳 dict 包含 {
+          'recyclebin_object_name': 'BIN$...',
+          'drop_time': datetime（repository 負責將 Oracle 的 DROPTIME 欄位轉換為 drop_time key）,
+          'can_undrop': 'YES'|'NO'
+        }，或 None 若查無此表。
+        """
+        pass
+    
+    def table_exists(self, schema: str, table_name: str) -> bool:
+        """
+        檢查原表名是否被現有的表佔用。
+        
+        原始指令：SELECT COUNT(*) FROM dba_tables 
+          WHERE UPPER(owner) = UPPER(:schema) AND UPPER(table_name) = UPPER(:table_name)
+        
+        回傳 True 若表存在。
+        """
+        pass
+    
+    def restore_table(self, schema: str, recyclebin_object_name: str, 
+                     new_table_name: str | None = None) -> str:
+        """
+        執行 FLASHBACK TABLE 救回表，回傳實際救回的表名。
+        
+        若 new_table_name 為 None：
+          原始指令：FLASHBACK TABLE <schema>."<recyclebin_object_name>" 
+            TO BEFORE DROP
+        
+        若 new_table_name 不為 None（已轉大寫的標準識別字，無特殊字元）：
+          原始指令：FLASHBACK TABLE <schema>."<recyclebin_object_name>" 
+            TO BEFORE DROP RENAME TO <new_table_name>
+          RENAME TO 目標不帶 schema 前綴、用轉大寫後的識別字、不加引號；
+          本 API 不支援需引號的特殊字元表名（輸入含此類字元由 Oracle 執行時報錯）。
+        
+        回傳實際救回的表名（原名或新名，大寫）；基礎設施錯誤時擲 InfraError(reason) 其中 reason 為 'connection' 或 'timeout'。
+        """
+        pass
 ```
 
-#### 測試案例範例
+Repository 不擲業務錯誤；查無資源回 None 或 False；Oracle 連線/逾時擲 `InfraError(reason)` 其中 reason 為 `'connection'` 或 `'timeout'`。Service 層檢查 can_undrop 欄位判斷能否救回：'YES' 表示能救，'NO' 表示不能救（對應 409 TABLE_NOT_RESTORABLE）；判定 503/504。
 
-- AC-FD-1 test_dry_run_original_name_restorable
-- AC-FD-2 test_restore_original_name_success
-- AC-FD-3 test_dry_run_new_name_not_exists
-- AC-FD-4 test_restore_new_name_success
-- AC-FD-5 test_table_not_in_recyclebin
-- AC-FD-8 test_original_name_conflict_no_new_name
-- AC-FD-15 test_idempotency_after_restore
-- AC-FD-16 test_connection_interruption_scenario
-- Audit result 各類至少一次
-- 時間格式驗證
+**Mock 實作**
 
-### §9 Out of Scope
+初始資料用字面值列出，對齊測試案例；每個方法的模擬行為：
+- `schema_exists('scott')` 回 True；其餘 False
+- `get_table_in_recyclebin('scott', 'emp')` 回 `{'recyclebin_object_name': 'BIN$abc123==', 'drop_time': datetime(2026,8,8,14,30,45), 'can_undrop': 'YES'}`
+- 若測試案例標記 emp 無法救回，該方法回 `'can_undrop': 'NO'`
+- `get_table_in_recyclebin('scott', 'nonexistent')` 回 None
+- `table_exists('scott', 'emp')` 初始回 False；若需測試原名被佔用的情況，用 fixture 或 monkeypatch 改為 True
+- `table_exists('scott', 'existing_table')` 回 True
+- `restore_table('scott', 'BIN$abc123==', None)` 回 `'EMP'`（大寫）
+- `restore_table('scott', 'BIN$abc123==', 'emp_restored')` 回 `'EMP_RESTORED'`（大寫）
 
-| SOP 範圍外項目 | 原因 | API 替代支援 |
-|---------------|------|------------|
-| 救回後 index、trigger 改名 | Oracle 自動命名，整理方式因人而異，不適合自動化 | 操作成功時 audit 記錄救回表名與時間，供 DBA 後續查詢 index 名稱並手動改名 |
-| 「以時間點回溯表內容」的 FLASHBACK 功能 | 與本功能不同，超出 DROP 救回的範圍 | 本功能僅提供 FLASHBACK TABLE ... TO BEFORE DROP，不支援任意時間點回溯 |
+**環境變數**
 
-### §10 實作交付要求
+| 名稱 | 預設值 | 合法範圍 | 讀取時機 |
+|------|--------|---------|---------|
+| `MOCK_RECYCLEBIN` | `false` | `true` 或 `false` | 應用啟動時 |
+| `ORACLE_HOST` | 無 | 非空字串 | 應用啟動時（real 模式必填） |
+| `ORACLE_PORT` | `1521` | 1–65535 | 應用啟動時 |
+| `ORACLE_SERVICE_NAME` | 無 | 非空字串 | 應用啟動時（real 模式必填） |
+| `ORACLE_USER` | 無 | 非空字串 | 應用啟動時（real 模式必填） |
+| `ORACLE_PASSWORD` | 無 | 非空字串 | 應用啟動時（real 模式必填） |
 
-按本 spec 實作三層式 FastAPI 服務（api / service / repository），放在專案根下 `restore-dropped-table-api/` 目錄。
+**DI 與 Singleton**
 
-#### 必附檔案
+用 `functools.lru_cache(maxsize=1)` provider 加 FastAPI `Depends`，repository 單例注入到 service，service 注入到路由。提供 `reset_singletons()` 函式供測試重設。
 
-**README.md**：
-- 快速啟動：mock 模式 `MOCK_RESTORE_DROPPED_TABLE=true python -m uvicorn main:app --reload`
-- Endpoint 一覽表（引自概要）
-- 3 個 curl 實走例：
-  - 試算（dry_run=true）→ 實際救回（dry_run=false）的完整流程
-  - 原名被佔用、改名救回
-  - 表不在回收筒的失敗例
-- 環境變數表、測試執行方式、冪等性說明
+**啟動失敗條件**
 
-**測試全綠**：`pytest` 直接跑全綠，不依賴 shell export 與 cwd
+- Real 模式（`MOCK_RECYCLEBIN=false`）且缺少任一 Oracle 連線設定。
+- Real 模式下 Oracle 連線失敗（啟動時測試連線）。
 
-**實作中發現本 spec 未定義的行為 → 停下回報該處**，不自行發明。
+## 8. 測試案例
 
----
+| # | 情境 | 輸入 | 預期結果 |
+|---|------|------|---------|
+| 1 | 以原名救回 | POST，`schema=scott, table_name=emp`（不給 new_table_name），原名未被佔用 | 200，`restored_table_name='EMP'`、audit result=success |
+| 2 | 改名救回 | POST，`schema=scott, table_name=emp, new_table_name=emp_restored`，原名被佔用 | 200，`restored_table_name='EMP_RESTORED'`、audit result=success |
+| 3 | 表不在回收筒 | POST，`schema=scott, table_name=nonexistent` | 404，TABLE_NOT_IN_RECYCLEBIN、audit result=rejected:TABLE_NOT_IN_RECYCLEBIN |
+| 4 | 救回後再執行 | POST，`schema=scott, table_name=emp`（已救回過、回收筒紀錄已消失） | 404，TABLE_NOT_IN_RECYCLEBIN、audit result=rejected:TABLE_NOT_IN_RECYCLEBIN |
+| 5 | 原名被佔用、未提供新名 | POST，`schema=scott, table_name=emp`（不給 new_table_name），原名被佔用 | 409，TABLE_NAME_CONFLICT、audit result=rejected:TABLE_NAME_CONFLICT |
+| 6 | 新表名衝突 | POST，`schema=scott, table_name=emp, new_table_name=existing_table`，新名與現有表同名 | 409，NEW_TABLE_NAME_EXISTS、audit result=rejected:NEW_TABLE_NAME_EXISTS |
+| 7 | 多筆同名紀錄 | POST，`schema=scott, table_name=emp`（被 DROP 多次、回收筒有多筆）| 200，救最新那一筆、audit result=success |
+| 8 | 表無法救回 | POST，`schema=scott, table_name=emp`，表在回收筒但空間已被回收 | 409，TABLE_NOT_RESTORABLE、details 的 reason=`SPACE_RECLAIMED`、`restored_table_name='EMP'`、audit result=rejected:TABLE_NOT_RESTORABLE |
+| 9 | Schema 不存在 | POST，`schema=nonexistent, table_name=emp` | 404，SCHEMA_NOT_FOUND、audit result=rejected:SCHEMA_NOT_FOUND |
+| 10 | 大小寫不敏感 | POST，`schema=scott, table_name=EMP`（大寫）| 200、救回成功、audit result=success |
+| 11 | Schema 為空 | POST，`schema=, table_name=emp` | 422，INVALID_INPUT（不記 audit） |
+| 12 | table_name 為空 | POST，`schema=scott, table_name=` | 422，INVALID_INPUT（不記 audit） |
+| 13 | 救回成功後重複執行 | POST 同案例 1 的參數執行兩次 | 第一次 200 success，第二次 404 TABLE_NOT_IN_RECYCLEBIN |
+| 14 | Oracle 連線失敗 | POST 任意 request，monkeypatch repository 擲 InfraError(reason='connection') | 503，DATABASE_CONNECTION_ERROR、audit result=error:connection |
+| 15 | Oracle 逾時 | POST 任意 request，monkeypatch repository 擲 InfraError(reason='timeout') | 504，DATABASE_TIMEOUT、audit result=error:timeout |
+| 16 | 時間格式驗證 | POST 成功 request | response 中 restore_time 為 ISO 8601、秒精度、無微秒、無時區後綴 |
+| 17 | 並發測試 | 兩個 thread/task 同時執行相同 POST request | 第一個 200 success，第二個 404 TABLE_NOT_IN_RECYCLEBIN |
+| 18 | 驗證失敗（資料庫異常） | POST 成功，monkeypatch 使驗證查詢回「表不存在」（FLASHBACK 未報錯但表查不到） | 500，RESTORE_VERIFICATION_FAILED、audit result=error:RESTORE_VERIFICATION_FAILED |
 
-## 未決事項
+## 9. 範圍外
 
-### Audit 儲存後端
+- 救回後 index、trigger、constraint 的名稱仍為 Oracle 自動命名的暫時名（BIN$ 開頭），功能正常但名稱不整齊；由 DBA 事後自行改名，不在本 API 範圍。
+- 「以時間點回溯表內容」的 FLASHBACK 查詢功能是另一個操作，與回收筒救回無關。
+- 事前備份、隔離層級、事務隔離等進階 Oracle 特性不在本 API 範圍。
 
-SOP 未明確指定 audit log 的儲存機制（資料庫表、日誌檔、日誌服務等）。
+## 10. 簽核
 
-**暫行假設**：Mock 模式使用記憶體 list；真實後端由部署環境指定。
-
-**待補項**：部署文件或環境配置需要定義真實後端的 audit log 儲存位置與查詢方式。
+簽核本文件即同意 Endpoint 一覽的範圍（單一 POST endpoint）、共通規範的防護方式（OAuth 認證、統一錯誤格式、8 個錯誤代碼）與範圍外的保留項目。本操作為可逆操作，可通過執行 `DROP TABLE` 復原。
