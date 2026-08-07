@@ -13,14 +13,14 @@ description: Convert an operations SOP (any domain — DBA runbooks, infra proce
 - [ ] Step 0 SOP 合格檢查（不合格 → 停，轉介 sop-author）
 - [ ] Step 1 萃取五清單（草稿）
 - [ ] Step 2 風險分級表
-- [ ] Step 3 spec 寫完（先概要後規格；照抄區塊逐字；逼問清單每題每端點過完）
+- [ ] Step 3 spec 寫完（先概要後規格；照抄區塊逐字；追問清單每題每個 endpoint 過完）
 - [ ] Step 4 自檢清單全勾
 - [ ] Step 5 盲審 spawn（prompt 照抄）→ 分流 → REVIEWS.md → HIGH=0
 - [ ] （實作發生後）Step 6 歸因
 ```
 
 把人類操作 SOP 轉成一份 API spec。**spec 是一份正式文件**，結構＝開頭「概要」
-（概述、端點一覽、典型情境、安全防護、人工保留項、簽核——任何角色用日常語言就能
+（概述、Endpoint 一覽、典型情境、安全防護、人工保留項、簽核——任何角色用日常語言就能
 讀懂並決定簽不簽）＋「規格」（§0–§10——驗收準則、schema、mock 狀態，實作零猜測）。
 兩段缺一不可，**先寫概要**；但成品**不標讀者對象**——「給審批者」「給 agent」
 「Part A/B」這類字眼不准出現在文件裡（見模板的文件語氣鐵律）。
@@ -79,7 +79,7 @@ spec 鏡像放 `docs/specs/<組名>/<api>-api.spec.md`。本 skill 不自行拆�
 |------|--------|------|
 | 1 萃取 | 讀 SOP 列五張清單：查詢類→GET、變更類→POST/PUT/PATCH/DELETE（依語意）、前置條件、錯誤對照表、審計欄位（SOP 通常不寫紀錄需求——沒寫就用 spec 模板 §7 的預設欄位；SOP 有特殊要求才照抄）。清單是工作草稿，不進 spec。順手檢查 SOP **前後矛盾**（例：輸入限制「必須正整數」vs 步驟「可用負數」）→ 有就回報請作者修，不要自行擇一 | — |
 | 2 風險分級 | **機械判定，不准推理**：先讀 SOP「做了之後能復原嗎」節——寫「能」→ `reversible`，寫「不能/回不去」→ `irreversible`，**照抄該節結論，禁止以任何「從嚴」理由升級**（升級=發明 SOP 沒要的 confirm/審批流程，兩頭皆錯）。SOP 無此節才用模板判定規則（「警告/需審批/無法復原」字樣 → irreversible）。純查詢 → `read` | [references/spec-template.md](references/spec-template.md) §風險分級 |
-| 3 產 spec | 先寫概要，再照模板填規格各節，逐端點過完逼問清單 | 模板：[references/spec-template.md](references/spec-template.md)；逼問清單：[references/checklists.md](references/checklists.md) |
+| 3 產 spec | 先寫概要，再照模板填規格各節，每個 endpoint 過完追問清單 | 模板：[references/spec-template.md](references/spec-template.md)；追問清單：[references/checklists.md](references/checklists.md) |
 | 4 自檢 | 跑完自檢清單（含 fresh-repo 測試、概要可讀性測試、讀者標籤掃描） | [references/checklists.md](references/checklists.md) |
 | 5 盲審閘門 | 用 subagent 機制 spawn 一個乾淨 context 的 subagent 盲審 spec（完整 prompt 與隔離規則見 checklists）；**HIGH > 0 不准寫 code**；發現與處置記入 spec 同資料夾的 `REVIEWS.md`（格式見 checklists） | [references/checklists.md](references/checklists.md) |
 | 6 實作回饋 | 實作階段發現缺陷 → 歸因（SOP/skill/spec/code）修對應層，不是只修 code | [references/checklists.md](references/checklists.md) §歸因表 |
