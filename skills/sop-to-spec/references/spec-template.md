@@ -1,263 +1,177 @@
 # Spec 模板
 
-產出檔：見 SKILL.md「輸入 / 輸出 / 語言」（`docs/specs/<組名>/<sop-slug>-api.spec.md`，
-非新佈局退回 `specs/`），結構 = 概要（六節）＋ 規格（§0–§10）。
-**先寫概要** —— 寫不出概要代表你還沒讀懂 SOP。
+產出檔：`docs/specs/<組名>/<sop-slug>-api.spec.md`（SOP 不在 `docs/sops/` 佈局下時退回
+`specs/`）。一份 SOP 對應一份 spec。
 
-**怎麼用這份模板**：標了「照抄」的區塊逐字複製進 spec；其餘各節照結構與要求填入
-該 SOP 的內容。SOP 有未決事項時，spec 開頭加「未決事項」節（見 SKILL.md）。
+寫出來的 spec 是一份正式的工程規格書：一位資深工程師看得懂、能直接照著實作，
+一位不寫程式的主管讀前三節就能決定簽不簽。行文自然，技術名詞（endpoint、request、
+response、schema、mock、audit）用英文，其餘照 SOP 的語言。文件裡不出現
+「給審批者」「給實作 agent」這類讀者標籤，也不出現模板自己的術語。
 
-**文件語氣**：spec 是一份正式文件——**文件裡不寫「給誰看」**（不出現「給審批者」
-「給實作 agent」「Part A/B」這類讀者標籤或後設說明）。讀者分工只存在於本模板的
-寫作指引：概要六節用日常語言（不用 EARS/JSON/狀態機術語），規格各節精確到零猜測——
-成品讀起來就是一份文件。行文自然專業，像資深工程師寫的規格：技術名詞
-（endpoint、request、response、header、mock、dry_run、audit、schema…）直接用英文，
-敘述用該 SOP 的語言，不自創術語。
+## 風險判定（Step 2）
 
-## 風險分級（Step 2 判定規則）
+依 SOP「做了之後能復原嗎」一節判定，照原文結論，不自行升級：
 
-**照 SOP 原文判定，不做推理**：讀 SOP「做了之後能復原嗎」節——寫「能」→ `reversible`；
-寫「不能／回不去」→ `irreversible`。**照抄該節結論，禁止以「從嚴」為由升級**
-（升級會生出 SOP 沒要求的 confirm/審批流程，實作與審批兩頭皆錯；從嚴原則只適用於
-SOP 未定義之處）。SOP 沒有這節才用下表判定；判定依據列入未決事項。
+| 等級 | 判斷 | 對 spec 的影響 |
+|------|------|---------------|
+| 查詢 | 純讀取 | 無額外要求 |
+| 可逆 | SOP 寫「能復原」 | response 需含復原所需的資訊（復原方法、操作前狀態） |
+| 不可逆 | SOP 寫「回不去」或要求審批 | request 必填 `confirm`（固定字串，格式 `CONFIRM_<動作大寫蛇形>`）與 `approval_id`；缺一回 428 |
 
-| 等級 | 判斷標準 | API 防護 |
-|------|---------|---------|
-| `read` 🟢 | 純查詢 | 無 |
-| `reversible` 🟡 | 可被另一操作撤銷（SOP 有回退步驟） | `dry_run` 預設 `true`；執行 response 必含回退所需資訊（回退方法＋操作前狀態） |
-| `irreversible` 🔴 | SOP 標示不可逆/需審批/警告 | `dry_run` 預設 `true` ＋ 必填 `confirm` 固定 token ＋ 必填 `approval_id`；缺一回 428 |
+SOP 沒有這節才依內文判斷（出現「無法復原」「需審批」等字樣視為不可逆），並把判定依據
+列入未決事項。操作耗時數分鐘以上（停機、重啟、大量資料）要決定 sync 或 202+job，
+並在文件裡說明選擇理由。
 
-SOP 操作耗時數分鐘以上（停機、重啟、大量資料）→ 明定 sync 或 202+job 模式，寫出選擇理由。
+## 文件結構
 
----
+各節照下列順序寫。內容要求寫在各節說明裡；「照抄」標記的文字直接放進 spec。
 
-## 概要（spec 前六節）
+### 1. 概述
 
-寫作要求（不寫進文件）：
-- 全用日常語言，不用 EARS/JSON/狀態機術語。不懂技術的人讀完概要要能說出
-  「這個 API 做什麼、最危險的操作是什麼、什麼情況會被擋」。
-- 「典型情境」至少三個，必含風險最高操作的完整流程＋一個被擋下的失敗情境；
-  SOP 全是 reversible 就用 reversible 示範，不要硬升級成不可逆。
-- 「安全防護」最後一條列出本 API **不防護**的事（殘餘風險）——防護的邊界要明講。
+一段文字：這個 API 的用途、來源 SOP（附路徑）、給誰用、認證方式一句帶過
+（見第 4 節共通規範）。不懂技術的人讀完這節加上 Endpoint 一覽，要能說出
+這個 API 做什麼、誰能用、最需要小心的操作是哪個。
 
-骨架（照結構填，`<>` 換成內容）：
+### 2. 名詞定義（選用）
 
-```markdown
-# <名稱> API Spec
+SOP「特別名詞與分類」有內容就轉成表：名詞、定義、系統如何判斷。沒有就省略本節。
 
-> 來源 SOP：<路徑>（<編號>）
+### 3. Endpoint 一覽
 
-## 概述
+| Method | Path | 說明 | 風險 |
+|--------|------|------|------|
 
-<三句話以內：這個 API 把哪份 SOP 的人工操作包成 API、可以用它做哪些事、給誰用。>
+風險欄寫「查詢／可逆／不可逆」。說明欄一句話，用日常語言。
 
-## Endpoint 一覽
+### 4. 共通規範
 
-| Endpoint | 說明 | 風險 |
-|----------|------|------|
-| GET /...  | 查詢 ○○ | 🟢 查詢 |
-| POST /... | 執行 ○○，執行前先檢查 ○○ | 🟡 可逆 |
-| POST /... | ○○，**執行後無法復原**，需要審批單號 | 🔴 不可逆 |
+**認證與授權**（照抄，依 SOP 調整角色）：
 
-## 典型情境
+> 認證與角色授權由部署環境的 OAuth 機制統一處理，不在本規格與實作範圍內，
+> 不自建 API key、不自行驗證角色。本 API 限 <角色> 使用，作為部署時的授權設定需求。
+> 操作者身分取自 OAuth 認證結果；mock 模式與本機測試以 header `X-Operator` 模擬，
+> 缺席或去除空白後為空時記為 `unknown`。
 
-情境一「<名稱>」：
-- Given <現況>
-- When 呼叫 <endpoint>（先以 dry_run 檢查，確認無誤後實際執行）
-- Then <結果>，audit 留下紀錄
+**Request 與 response 格式**：
+- 時間欄位一律 ISO 8601 秒精度、UTC、無時區後綴（例 `2026-08-08T14:30:45`）；
+  來源時間有微秒就截斷。
+- boolean 欄位一律出現，不以 null 或缺席表示 false。
+- 成功回應直接回資源內容，不包信封；清單用複數名詞作 key 裝陣列，
+  需要分頁時加 `nextPageToken`。
+- 「最新」「之內」這類比較條件要給可計算的定義，含相等時的處理方式。
+- 若目標 repo 已有回傳格式慣例，照舊慣例並在本節完整定義；以下錯誤格式僅適用於
+  無既有慣例的專案。
 
-## 安全防護
+**錯誤格式**（照抄）：
 
-- 會變更狀態的操作預設僅試算不執行（dry_run）
-- 不可逆操作須同時提供固定確認字串與變更審批單號，缺一不執行
-- 認證與授權由 OAuth 統一控管；<SOP 有角色限制時：僅 ○○ 角色可使用>
-- 每個操作（含試算與被拒絕的 request）都留 audit 紀錄：操作者、時間、對象、結果
-- 本 API 不防護的事項：<殘餘風險逐條>
-
-## 人工保留項
-
-| SOP 步驟 | 不自動化的原因 | API 提供的替代支援 |
-|----------|---------------|-------------------|
-
-## 簽核
-
-簽核本文件即同意「Endpoint 一覽」的範圍、「安全防護」的防護等級、
-「人工保留項」的保留項目。
-```
-
-## 規格（§0–§10）
-
-概要之後接 `## 規格` 一節，底下 §0–§10 依序（`### §0 全域規則`…）。內容零猜測。
-
-### §0 全域規則
-
-#### 認證與授權（照抄進 spec，內容依 SOP 調整）
-
-- 認證（401）與角色授權（403）由部署環境的 OAuth 機制統一處理，
-  **不在本 spec 與實作範圍**——不自建 API key、不自行驗證角色。
-- SOP 有「誰可以用」的限制 → 在本節照 SOP 原文列出允許角色，作為部署時的
-  OAuth 授權設定需求。
-- 操作者身分（audit 的 actor）取自 OAuth 認證結果（部署環境注入的身分資訊）；
-  mock 模式與本機測試以 header `X-Operator` 模擬，缺席或 `str.strip()` 後為空
-  → 記字面值 `"unknown"`。
-
-#### 閘門順序（照抄進 spec，勿改寫）
-
-```
-（認證與授權在進入服務前由 OAuth 處理，見上節）
-1. schema 驗證 → 422（pydantic：必填、型別、互斥輸入）
-2. 資源解析    → 404（request 指到的資源不存在；dry_run 也 404）
-3. 風險閘門    → 428（irreversible 且 dry_run=false：confirm/審批缺漏）
-4. 前置條件    → 409（領域狀態不允許）
-5. 執行
-```
-
-dry_run 的走法（照抄進 spec）：
-- `dry_run=true`：跑 1–2（404 照常擲出）→ 閘門 4 的檢查**依序評估**，第一個沒過的 →
-  對應 HTTP 碼＋error 物件（`error.status` = 該檢查的碼）；全過 → 2xx 回應含
-  `"dry_run": true`。不進閘門 3、不執行。
-- `dry_run=false`：reversible 過 1–2、4 後直接執行（閘門 3 只管 irreversible）；
-  irreversible 過 1–2 後先過閘門 3 再 4、5。
-
-#### 統一 response 形狀
-
-**先選版**（寫 spec 前判定一次）：
-- **既有專案**（目標 repo 已有 API 回傳慣例——看現有 endpoints、openapi、README）→
-  **照舊格式**，把該格式完整定義進本節取代預設（例：既有慣例是
-  `{"success": bool, "detail": <內容>}` 就照它寫死）。跟著舊格式是為了同一專案
-  內一致；spec 仍要把形狀逐欄位寫死，維持零猜測。
-- **全新專案／repo 無既有慣例** → 用下面的預設（照抄進 spec）。
-
-預設——HTTP 2xx（成功，含 dry_run 通過）：**沒有信封**，直接回資源內容。
-- 單一資源／操作結果 → 平鋪該 endpoint 的業務欄位（欄位由 §1/§3 定義）。
-- 清單 → 複數名詞當 key 裝陣列，需要分頁時搭 `nextPageToken`：
-  `{"<複數名詞>": [ {...}, ... ], "nextPageToken"?: str}`。
-- 試算回應含 `"dry_run": true` 欄位；實際執行的回應**不帶**這個欄位。
-
-HTTP 4xx/5xx（被擋、驗證失敗、錯誤——統一 exception handler 產出）：
-根目錄**只有一個 `error` 鍵**，內部固定四欄位：
+> 所有 4xx/5xx 回應由統一的 exception handler 產出，格式如下。`error.code` 等於
+> HTTP 狀態碼；`error.status` 的值域見錯誤代碼總表；`message` 為人讀的簡述，
+> 程式判斷一律依據 `error.status`。
 
 ```json
 {
   "error": {
-    "code": <HTTP 狀態碼數字，例 409>,
-    "message": "<簡述>",
-    "status": "<大寫錯誤狀態字，例 NAME_CONFLICT / INVALID_ARGUMENT>",
-    "details": [ <更具體的細節物件，可為空陣列> ]
+    "code": 409,
+    "message": "說明文字",
+    "status": "ERROR_CODE",
+    "details": []
   }
 }
 ```
 
-- `error.code` 一律等於 HTTP 狀態碼；`error.status` 值域＝§6 錯誤表的 error_code 欄
-  （SOP 沒給碼的自訂 SCREAMING_SNAKE 並在 §6 宣告，spec 內一致）。
-- `details` 兩種標準形，**同一個 error.status 永遠用同一形**：
-  schema 驗證失敗（422）→
-  `[{"fieldViolations": [{"field": "<欄位>", "description": "<原因>"}]}]`；
-  其他 → `[{"reason": "<機器可讀原因>", "metadata": {<補充鍵值，無則空物件>}}]`。
-- 前置條件編號 `PC-<n>`：**先列 PC 權威表**（本節或 §3 開頭：編號 → 條件 → HTTP →
-  error.status → 評估順序），AC/§6/§7 才准引用——引用了表裡沒有的 PC-n = spec bug。
-  response 不回逐條結果——dry_run 失敗回**第一個沒過的** PC 對應的 `error.status`。
+`details` 的形狀依 `error.status` 固定：欄位驗證失敗（422）用
+`[{"fieldViolations": [{"field": "...", "description": "..."}]}]`；
+其餘用 `[{"reason": "...", "metadata": {}}]`。同一個 `error.status` 永遠用同一種形狀。
 
-#### 常數與佔位符
+**錯誤代碼總表**：
 
-- 佔位符推導：`<系統>` = `<sop-slug>` 大寫蛇形（`deploy-checklist` →
-  `MOCK_DEPLOY_CHECKLIST`），spec 裡直接寫展開後的字面值。
-- irreversible endpoint 的 confirm token 給**字面值**：格式 `CONFIRM_<動作大寫蛇形>`
-  （例 `CONFIRM_DROP_TABLESPACE`）。`approval_id` strip 後長度 > 0。confirm 缺席、值不符、
-  approval_id 缺席都算閘門 3 失敗 → 428（schema 上兩者都是 `Optional[str] = None`，
-  422 只管型別）。
-- 常數與 audit 固定文案唯一出處：`models/schemas.py`。
+| error.status | HTTP | 條件 | 處置建議 |
+|--------------|------|------|---------|
 
-#### 型別與行為約定
+SOP 的「可能出什麼錯」整理成這張表；SOP 沒給代碼就自訂 SCREAMING_SNAKE 命名，
+全文一致。這張表是 `error.status` 的完整值域；枚舉型欄位（錯誤原因、狀態字等）的
+值域也在文件裡完整列出，不寫「見某檔案」。
 
-- 時間欄位一律 ISO8601 秒精度 naive UTC（無微秒、無 Z、無時區後綴）；bool 欄位永遠出現；
-  比較性詞彙（最新、之內）給可計算定義**含平手規則**。
-- DI：`functools.lru_cache(maxsize=1)` providers ＋ FastAPI `Depends`；測試 seam 提供
-  `reset_singletons()`；`main.py` lifespan 呼叫一次 service provider warm-up，
-  real 模式缺連線設定 → boot fail-hard。
-- 同步模型與並發：明寫 sync/202 與理由、並發防護（狀態機擋 or 「未防護＋風險說明」）、
-  冪等行為、**執行中途失敗語意**（外部系統在執行/輪詢途中斷線或逾時：回什麼 HTTP、
-  狀態算什麼、audit result 記什麼——只定義「開始前」與「成功後」兩態的 spec 會讓
-  實作者發明第三態）。
+### 5. 各 endpoint 規格（一個 endpoint 一節）
 
-### §1 Domain Model
-實體欄位與型別 → 直接變成 pydantic model 與 mock 狀態。
+每節固定包含：
 
-### §2 Endpoints 總表 ＋ 狀態機
-| Method | Path | 風險 | AC 前綴 | SOP 章節 |
+**說明** — 做什麼、什麼情況用，一到三句。
 
-**AC 前綴 = 該 endpoint 2–4 個大寫字母縮寫**（自訂，例 `POST /flashback/drop` → `FD`），
-在本表宣告即為權威，§3 沿用。
+**Request** — 欄位表（欄位、型別、必填、預設、說明）加一個 JSON 範例；
+有多種輸入形式（例如兩種指定方式擇一）就每種各給一個範例。
 
-實體有 >1 狀態值 → 轉移表（目前狀態 × endpoint → 結果狀態；其他狀態下呼叫 → ?），
-狀態檢查屬於哪個閘門要明寫（含刻意不對稱的理由）。
+**處理流程** — 依執行順序編號列出每個檢查與動作。每個檢查寫明：檢查什麼、
+不通過時回哪個 HTTP 狀態碼與 `error.status`。順序即實際評估順序，
+多個檢查同時不通過時回第一個。格式驗證（422）在最前，其後依序為資源存在性（404）、
+審批檢查（428，僅不可逆）、狀態與前置條件（409），最後執行與驗證。
+不可逆操作的 confirm/approval 規則寫在這裡：`confirm` 值不符或缺席、
+`approval_id` 缺席或為空，都回 428。
 
-### §3 各 endpoint 驗收準則（EARS）
+**Response** — 成功範例加欄位表。可逆操作附一句復原方式。
 
-格式：`AC-<前綴>-<序號>: WHEN <條件> THE SYSTEM SHALL <可驗證行為>`
-每個 endpoint 的 happy/edge/failure 三類缺一不可；request/response 給 JSON 區塊
-（含範例值，照 §0 response 形狀）。寫每條 AC 時過一遍追問清單（references/checklists.md）。
+**錯誤** — 本 endpoint 適用的錯誤代碼列表（引用錯誤代碼總表的代碼即可，
+不重複定義）。
 
-### §4 三層架構對應
+**行為細節** — 有才寫：冪等性（同一 request 重複執行會如何）、並發（兩個 request
+同時操作同一資源會如何；無防護就寫明並說可接受的原因）、執行中斷（外部系統在執行
+途中斷線或逾時：回什麼、狀態算什麼、audit 記什麼）、耗時與逾時。
 
-目錄樹 ＋ repository 介面表 ＋ mock 定義：
+### 6. Audit
 
-- repository 每個外部呼叫一個方法，docstring 寫**完整的原始指令字面值**（真實系統的
-  實際語法，含查詢的 view/欄位名與排序鍵；不省略、不發明不存在的欄位名）。
-- **repository 永不擲業務錯誤**——查無回空值/None，404/409 判定在 service。
-- **基礎設施錯誤通道**（照抄進 spec）：「永不擲業務錯誤」**不含**基礎設施錯誤——
-  連線失敗/逾時**不得**與「查無」共用 None（一個 None 載不動 503 與 504 兩種結果）。
-  repository 擲 `InfraError(reason)`（reason ∈ `connection` / `timeout`），service 對應
-  503 / 504；未列舉的基礎設施錯誤一律 → 503、`error.status` 自訂一個統一碼進 §6。
-- mock：初始狀態給**具體字面值表**（與 AC 範例對齊），每個方法的模擬效果寫死
-  （含解析類方法的換算公式）。
+- 欄位表：至少含 operator、operation、操作對象、request 參數（記使用者原始輸入）、
+  時間、result、operation_id。
+- 寫入時機（照抄）：格式驗證失敗（422）不記錄；其餘每個 request 恰好一筆，
+  查詢類、被擋下的、5xx 都算。
+- result 為封閉枚舉：`success`、`rejected:<error.status>`、`error:<簡短訊息>`；
+  rejected 的完整值域依錯誤代碼總表逐 endpoint 列出。
+- 固定文案與常數集中於 `models/schemas.py`。
+- 儲存機制：mock 模式為 repository 內的記憶體 list（測試可直接斷言）；
+  真實後端由 SOP 或使用者指定，未指定就列入未決事項。
 
-### §5 設定
-環境變數表：預設值、合法範圍、**讀取時機**（boot 快取 or 每 request）。
+### 7. 架構與實作要求
 
-### §6 錯誤模型
-SOP 有故障排除表 → 整張搬入（error_code → 條件 → HTTP → 處置建議）。
-沒有（checklist 型 SOP 常見）→ 從 SOP 散落的失敗描述與 Step 1 錯誤清單**自行整理**成
-同格式的表。本表的 error_code 欄＝`error.status` 的完整值域；SOP 沒給碼的自訂
-SCREAMING_SNAKE，前置條件對應的碼以 `PC-<n>` 編號對照（SOP 自帶步驟編號就用它，
-沒有就自訂並在本表宣告，spec 內一致即可）。
-**枚舉型欄位**（錯誤原因、狀態字…）的值域在 spec 裡**完整列舉**——寫「見某檔案」＝留白。
+- 三層式 FastAPI：api（路由與驗證）→ service（業務規則、前置檢查、audit）→
+  repository（外部系統存取，真實與 mock 兩種實作，以 `MOCK_<系統>` 環境變數切換）。
+  服務放 repo 根目錄下 `<sop-slug>-api/`。
+- repository 介面表：每個外部呼叫一個方法，docstring 附完整的原始指令
+  （實際語法，含查詢的 view、欄位、排序；不省略）。repository 不擲業務錯誤——
+  查無資料回 None 或空 list（哪個方法回哪種要寫明），404/409 由 service 判定；
+  基礎設施錯誤擲 `InfraError(reason)`（reason 為 `connection` 或 `timeout`），
+  service 對應 503/504，無法歸類的一律 503 並在錯誤代碼總表給一個統一代碼。
+- mock 定義：初始資料用具體字面值表列出（與測試案例對齊），每個方法的模擬行為寫死。
+- 環境變數表：名稱、預設值、合法範圍、讀取時機。
+- DI 用 `functools.lru_cache(maxsize=1)` provider 加 FastAPI `Depends`，
+  提供 `reset_singletons()` 供測試重設；real 模式缺連線設定時啟動失敗。
+- 交付需附 README：mock 模式啟動指令、endpoint 一覽、二到三個 curl 操作範例、
+  環境變數表、測試執行方式。
+- 實作中發現規格未定義的行為，停下回報，修規格後再繼續。
 
-### §7 Audit
-欄位 schema（含 operator、operation_id）、寫入時機（規則照抄：
-**schema 驗證失敗（422）不留；其餘每個 request 恰好一筆**——read endpoint 也算，
-含 404/409/428、5xx、dry_run。禁止另寫與此矛盾的句子）、result 封閉枚舉
-`success` / `dry_run` / `rejected:<error.status>` / `error:<msg>`
-（rejected 的完整值域**每個 endpoint 窮舉成表**，不留實作者自創格式的空間）、
-各 operation 欄位對應表、audit 固定文案字面值（集中 `models/schemas.py`）。
-儲存機制明寫：mock 模式 = repository 內記憶體 list（測試可讀斷言）；
-真實後端由 SOP 或使用者指定，SOP 沒講就列入未決事項。
+### 8. 測試案例
 
-### §8 測試計畫
+SOP「測試例子」逐條展開成表，每列一個案例：
 
-- 每條 AC ≥1 測試、測試名含 AC 編號；mock 狀態操縱類案例；audit 各類 result
-  至少一次斷言；conftest autouse `reset_singletons()`。
-- **hermetic**：conftest 開頭 `os.environ.setdefault` 設好 `MOCK_<系統>=true` 與
-  delay/retry 類環境變數的 0 值（setdefault 不覆蓋外部指定；驗證 delay 行為的測試
-  自行覆寫）——直接跑 `pytest` 就要全綠，不依賴 shell 先 export。
-- **不依賴 cwd**：conftest 把服務根目錄插進 `sys.path`（`Path(__file__).parent.parent`），
-  從 repo 根或服務目錄跑都要綠；同 repo 多個服務時 pytest 用 `--import-mode=importlib`
-  並在 conftest 處理同名頂層模組（main/models/service/repository）的 sys.modules 衝突。
-- **失敗案例（503/504）的測法**：monkeypatch 把 repository/provider 換成擲
-  `InfraError(...)` 的假物件——「mock 模式測不到連線失敗/逾時」是誤解，不得留空殼測試。
-- 時間格式至少一條斷言（回應時間戳無微秒、無時區後綴，對齊 §0）。
+| # | 情境 | 輸入 | 預期結果 |
+|---|------|------|---------|
 
-### §9 Out of Scope
-SOP 不自動化的步驟（含 SOP「範圍外」節的內容）＋ 原因 ＋ API 替代支援
-（與概要「人工保留項」一致，這裡可帶技術細節）。
+- 預期結果寫到可驗證：HTTP 狀態碼、關鍵 response 欄位值、audit result。
+- 覆蓋：每個成功情境、每個錯誤代碼至少一列；冪等、並發、中斷等行為細節各一列；
+  503/504 各一列（測試中以 monkeypatch 使 repository 擲 `InfraError` 模擬）。
+- 測試實作要求：每列至少一個測試，測試名含案例編號；conftest 用
+  `os.environ.setdefault` 設好 `MOCK_<系統>=true` 等變數，直接跑 `pytest` 即全綠；
+  conftest 將服務根目錄加入 `sys.path`，不依賴執行目錄；
+  至少一條斷言驗證時間格式（無微秒、無時區後綴）。
 
-### §10 實作交付要求
-照本 spec 實作三層式 FastAPI（api / service / repository ＋ mock，`MOCK_<系統>=true`
-可跑全部測試），服務放 repo 根下 `<sop-slug>-api/` 目錄。**必附 `README.md`**：
-- 快速啟動：mock 模式一行起服務
-- Endpoint 一覽表（可從概要帶）
-- 2–3 個 curl 實走情境，必含風險最高操作的完整流程（dry_run → 實際執行）
-- 環境變數表、怎麼跑測試
+### 9. 範圍外
 
-**實作中發現本 spec 未定義的行為 → 停下回報該處，修 spec 後再繼續；不得自行發明**
-（未定義行為 = spec 的 bug，不是實作的自由度）。
+SOP 不自動化的步驟與「範圍外」節的內容：項目、原因、API 提供的替代支援。
+
+### 10. 簽核
+
+> 簽核本文件即同意 Endpoint 一覽的範圍、共通規範的防護方式與範圍外的保留項目。
+
+## 未決事項
+
+SOP 缺資訊且問不到人時，在概述之後加「未決事項」一節，列出問題與暫行假設；
+假設一律取較嚴格的方向。不可逆操作的關鍵參數（confirm 條件、審批要求）不得自行假設，
+必須留在未決事項等人補。
