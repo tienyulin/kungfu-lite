@@ -1,6 +1,6 @@
 ---
 name: skill-author
-description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 references、自然的行文、經過觸發測試的 description、機器自檢與弱模型試跑。使用者要寫新的 skill、建 skill、改 skill、review skill 品質時使用。
+description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 references，文字自然、描述欄位通過觸發測試、自檢機器化、弱模型試跑後才交付。使用者要寫新的 skill、建 skill、改 skill、review skill 品質時使用。
 ---
 
 # Skill 撰寫
@@ -12,7 +12,7 @@ description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 
 進度：
 - [ ] Step 1 釐清需求
 - [ ] Step 2 寫 SKILL.md 與 references
-- [ ] Step 3 description 觸發測試
+- [ ] Step 3 觸發測試
 - [ ] Step 4 自檢
 - [ ] Step 5 試跑與驗收
 ```
@@ -31,16 +31,16 @@ description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 
 - 有沒有既有範本或慣例要沿用？會不會跟其他 skill 串接？
 
 改寫既有 skill 時，先完整讀原檔，列出必須保留的功能內容（檢查項、範本、規則）；
-改寫只動結構與行文，功能內容不得流失。
+改寫只動結構與文字，功能內容不得流失。
 
 ## Step 2 — 寫 SKILL.md 與 references
 
-照 standards.md 的結構、行文與產出物標準寫：SKILL.md 寫流程，大塊的範本與標準
+照 standards.md 的結構、寫作風格與產出物標準寫：SKILL.md 寫流程，大塊的範本與標準
 放 references；步驟的驗證能寫成指令就寫成指令，並要求執行後看到輸出才算通過。
 
-## Step 3 — description 觸發測試
+## Step 3 — 觸發測試
 
-description 是唯一的自動觸發機制（機制與寫法見 standards.md 的 description 節），
+描述欄位是唯一的自動觸發機制（機制與寫法見 standards.md 的「描述欄位」節），
 寫完必測：
 
 1. 準備八到十二句使用者講法：真實講法、換句話說的變形、不含關鍵詞的講法，
@@ -54,7 +54,7 @@ description 是唯一的自動觸發機制（機制與寫法見 standards.md 的
 
 ## Step 4 — 自檢
 
-照 standards.md 的清單逐項做：行文掃描零命中、引用與數量一致、
+照 standards.md 的清單逐項做：寫作風格掃描零命中、引用與數量一致、
 SKILL.md 500 行內、references 只有一層。
 
 ## Step 5 — 試跑與驗收
