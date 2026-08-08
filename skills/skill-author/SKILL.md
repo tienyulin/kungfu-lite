@@ -19,7 +19,7 @@ description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 
 
 標準只有一份：[references/standards.md](references/standards.md)，動筆前先讀完。
 兩個原則貫穿全部步驟：skill 本身與它的產出都要像資深工程師親手寫的；
-能機器檢查的規則就寫成可執行的檢查——寫在敘述裡的規則，弱模型執行時經常漏掉。
+能機器檢查的規則就寫成可執行的檢查。
 
 ## Step 1 — 釐清需求
 
@@ -35,18 +35,13 @@ description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 
 
 ## Step 2 — 寫 SKILL.md 與 references
 
-照 standards.md 的結構與行文標準寫。要點：
-
-- SKILL.md 寫流程；大塊的範本與標準放 references，從 SKILL.md 一層連過去。
-- 產出有固定格式的給範本：固定文字標「照抄」，其餘給結構與填寫要求；
-  給作者的填寫指引不寫進產出物。
-- 步驟的驗證能寫成指令就寫成指令，並要求執行後看到輸出才算通過。
-- 明寫只產出交付物，不產生進度、摘要、自檢報告這類過程檔案。
+照 standards.md 的結構、行文與產出物標準寫：SKILL.md 寫流程，大塊的範本與標準
+放 references；步驟的驗證能寫成指令就寫成指令，並要求執行後看到輸出才算通過。
 
 ## Step 3 — description 觸發測試
 
-description 是唯一的自動觸發機制：執行環境啟動時只預載各 skill 的 name 與
-description，靠語意比對決定要不要讀 SKILL.md。寫法照 standards.md，寫完必測：
+description 是唯一的自動觸發機制（機制與寫法見 standards.md 的 description 節），
+寫完必測：
 
 1. 準備八到十二句使用者講法：真實講法、換句話說的變形、不含關鍵詞的講法，
    以及至少三句容易誤觸發的相鄰任務當負對照。

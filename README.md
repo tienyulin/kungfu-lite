@@ -31,5 +31,4 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 ## 與 kungfu 完整版的差異
 
 - 檢查全部改成 SKILL.md 內的 grep/手動清單，不附 python script
-- 無 pre-commit / hook 接法
-- 無 marketplace / bundle，直接 `npx skills add`
+- 無 pre-commit / hook 接法，無 marketplace / bundle，直接 `npx skills add`

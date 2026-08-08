@@ -1,7 +1,6 @@
 # Spec 模板
 
-產出檔：`docs/specs/<組名>/<sop-slug>-api.spec.md`（SOP 不在 `docs/sops/` 佈局下時退回
-`specs/`）。一份 SOP 對應一份 spec。
+產出檔路徑與「一份 SOP 一份 spec」的規則照 SKILL.md「輸入、輸出、語言」節。
 
 寫出來的 spec 是一份正式的工程規格書：一位資深工程師看得懂、能直接照著實作，
 一位不懂技術的人讀前三節就能了解這個 API 做什麼、風險在哪。行文自然，

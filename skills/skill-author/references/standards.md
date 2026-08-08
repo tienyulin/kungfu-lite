@@ -28,8 +28,7 @@ best practices。skill 可能在任何 agent 執行環境被載入，內容與�
 - 只寫觸發條件與產出，不摘要內部流程——流程摘要會讓 agent 照 description
   做事而跳過 SKILL.md 本文。
 - skill 之間有上下游關係的，把轉介條件寫進 description，觸發鏈才接得起來。
-- 每次改完 description 都重跑觸發測試：弄丟一個觸發詞就會漏接一整類請求，
-  而這只有測了才會發現。
+- 每次改完 description 都重跑觸發測試：弄丟一個觸發詞就會漏接一整類請求。
 
 ## 行文
 

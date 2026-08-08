@@ -2,8 +2,9 @@
 
 ## 各框架匯出指令
 
-能離線（不起服務）把 OpenAPI 匯出成檔案的，直接匯出；不能的，在 README 手寫
-endpoint 表（見 SKILL.md Step 3）。
+判準：框架現狀就能離線（不起服務）匯出成檔案的直接匯；要新增依賴或改 code
+才能匯出的（例如 Express 從零接 swagger-jsdoc），先問使用者要不要接，
+不接就手寫 README 的功能一覽表（見 SKILL.md Step 3）。
 
 | 框架 | 匯出方式 |
 |---|---|
@@ -13,10 +14,6 @@ endpoint 表（見 SKILL.md Step 3）。
 | Django + DRF | `drf-spectacular`：`python manage.py spectacular --file openapi.yaml` |
 | Go | `swaggo/swag`：`swag init`（從註解產 `docs/swagger.json`） |
 | 其他能產 OpenAPI 的 | 跑該框架的匯出器 |
-
-判準：框架現狀就能匯出的直接匯。要新增依賴或改 code 才能匯出的
-（例如 Express 從零接 swagger-jsdoc），先問使用者要不要接；不接就手寫
-README 的功能一覽表。
 
 ## 補漏對照：完整度檢查發現缺漏時改哪裡
 

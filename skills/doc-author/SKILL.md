@@ -20,15 +20,14 @@ description: 幫一個 repo 寫兩份文件：README.md 是給使用者的使用
 兩條原則：
 
 1. 文件是事實，寫錯比寫少嚴重。內容只能來自 repo 裡可觀察的事實（code、設定、註解）
-   或使用者親口提供；查不到的細節在正文原地標「（待補：<要問什麼>）」。
-   不要發明一個像樣的值再標待補（發明的名字看起來像真的，比空缺更難發現），
-   也不要用「常見做法」補（來源寫重試 2 次就寫 2 次，不要自行升級成指數退避）。
+   或使用者親口提供；查不到的細節在正文原地標「（待補：<要問什麼>）」——不發明
+   像樣的值再標待補（比空缺更難發現），也不用「常見做法」補（來源寫重試 2 次
+   就寫 2 次，不自行升級成指數退避）。
 2. 本 skill 只建立和修改文件（README、`docs/`、openapi.json），不動 repo 的
    程式碼與其他檔案；Step 3 的補標註是唯一例外，動手前先徵求同意。
 
 名詞用法先讀 [references/glossary.md](references/glossary.md)（存在
-`references/glossary/` 資料夾就整個讀）。文件裡用到表列名詞時照它的定義與寫法；
-與 repo 慣用講法衝突時以 glossary 為準，並在文件裡註明 code 內的實際識別字。
+`references/glossary/` 資料夾就整個讀），照它的定義、寫法與衝突處理規則。
 
 ## 兩個讀者、兩份文件
 
@@ -57,8 +56,7 @@ monorepo（多服務同 repo）：各服務目錄各自一份 README 與 docs/AR
 ## Step 2 — docs/ARCHITECTURE.md
 
 這是一份普通的工程架構文件：分層、目錄、一個 request 怎麼流過系統、為什麼這樣設計。
-用工程師的日常用語寫節名（專案結構、設計說明），不自創術語。人類工程師掃著讀要能懂，
-AI 讀完要能不重掃 repo 就動工。
+用工程師的日常用語寫節名（專案結構、設計說明），不自創術語。
 
 寫作要求：
 
@@ -154,8 +152,8 @@ grep -nE ':[0-9]+`|行 ?[0-9]+|line [0-9]+' docs/ARCHITECTURE.md
 - 錯誤狀態碼（4xx/5xx）有宣告與 schema
 - response 有範例（`example` 或 `examples`）
 
-缺的照 frameworks.md 的對照表回 code 補標註再重新匯出；不手改 openapi.json
-（會被下次匯出蓋掉）。匯不出來的（框架不支援、要加依賴）先問使用者；
+缺的照 frameworks.md 的對照表回 code 補標註再重新匯出；不手改 openapi.json。
+匯不出來的（框架不支援、要加依賴）先問使用者；
 不匯就在 README 手寫 endpoint 表（Step 4），並在 ARCHITECTURE.md 設計說明註明。
 
 ## Step 4 —（僅對外元件）README.md
@@ -220,8 +218,7 @@ grep -nE ':[0-9]+`|行 ?[0-9]+|line [0-9]+' docs/ARCHITECTURE.md
 架構與開發文件（repo 內）：`docs/ARCHITECTURE.md`
 ```
 
-（末尾指路是給 repo 訪客的，上傳平台後多一行無害。照這個格式寫，
-不用「見」「參考」等字眼，下面的自足檢查會擋。）
+（末尾指路是給 repo 訪客的，上傳平台後多一行無害。）
 
 寫完跑三個檢查：
 
