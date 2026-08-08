@@ -33,17 +33,18 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 
 ## 初始設定
 
-安裝完 skills 後，對任何一個 agent 說「幫我 setup」，它會照 `setup` 做三件事：
+安裝完 skills 後，對任何一個 agent 說「幫我 setup」（或自己跑
+`bash ~/.claude/skills/setup/references/sync.sh --now`），一次完成三件事：
 
 1. 把 [skills/setup/references/AGENTS.md](skills/setup/references/AGENTS.md)
    （精簡的 agent 工作守則：證據、改動紀律、停下來的時機）接到本機所有
    偵測到的 agent 全域設定，之後每個 session 自動載入。
 2. 依 [skills/setup/references/skill-sources.txt](skills/setup/references/skill-sources.txt)
-   的清單，把團隊選用的 skill repo 裝到使用者層級的所有 agent
-   （跑 [sync.sh](skills/setup/references/sync.sh)：沒裝的裝上、裝過的更新）。
+   的清單，把團隊選用的 skill repo 裝到使用者層級的所有 agent。
 3. 在各 agent 接一個 session 啟動 hook，每天第一個 session 在背景
-   再跑一次同一支 sync.sh——之後在清單加新來源或更新任何 skill，
-   push 完隔天所有機器、所有 agent 自動就是新的，不用另行通知。
+   重跑同一支 [sync.sh](skills/setup/references/sync.sh) 收斂一輪——
+   之後在清單加新來源、更新任何 skill、甚至新裝一個 agent，
+   push 完隔天所有機器自動就是新的，不用另行通知。
 
 ## 與 kungfu 完整版的差異
 

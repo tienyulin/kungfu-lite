@@ -5,100 +5,48 @@ description: 一次完成本機的 agent 環境設定：把團隊工作守則接
 
 # 環境設定
 
-三個部分：接工作守則、安裝團隊 skills、接每日自動更新 hook。
-使用者只要求其中一部分時，只做那一部分。
+執行本體是 [references/sync.sh](references/sync.sh)：一支冪等的 script，
+跑一次就完成全部設定，重跑收斂到同一狀態。它做三件事——
 
-安裝與更新是同一個動作：[references/sync.sh](references/sync.sh) 逐列對
-[references/skill-sources.txt](references/skill-sources.txt) 的來源執行
-`npx -y skills add`，沒裝的裝上、裝過的更新成 remote 最新。清單含本 repo
-自己，所以 script 與清單也會每天自我更新。setup 只做需要判斷的一次性接線，
-其餘都交給 sync.sh。
+1. **接工作守則**：把 [references/AGENTS.md](references/AGENTS.md) 接到
+   各 agent 的全域 context 檔（Claude Code 在 `~/.claude/CLAUDE.md` 加
+   import 行；Codex `~/.codex/AGENTS.md`、Gemini `~/.gemini/GEMINI.md`、
+   OpenCode `~/.config/opencode/AGENTS.md`、Cline
+   `~/Documents/Cline/Rules/AGENTS.md` 均 symlink 指向 store 正本），
+   每個 session 自動載入。
+2. **接自動更新 hook**：在 Claude Code 與 Gemini 的 `settings.json`
+   （`hooks.SessionStart`）、Codex 的 `config.toml`
+   （`[[hooks.SessionStart]]`）、Cline 的 `Hooks/TaskStart` 接上
+   「跑 sync.sh」的 session 啟動 hook。以
+   `~/.cache/skills-update.stamp` 節流：每天第一個開啟的 session
+   在背景收斂一輪，其餘 session 直接結束。OpenCode 沒有指令型 hook，
+   略過——安裝是全域的，其他 agent 跑過它的 skills 就是新的。
+3. **安裝團隊 skills**：照 [references/skill-sources.txt](references/skill-sources.txt)
+   逐列 `npx -y skills add <repo> -g --all`，沒裝的裝上、裝過的更新成
+   remote 最新。清單含本 repo，sync.sh、清單與守則正本因此每天自我更新；
+   之後新裝的 agent 也會在隔天被自動接上。
 
-## 接工作守則
+安全界線：只在 agent 的目錄已存在時動作，不替沒安裝的 agent 造設定；
+設定檔一律無損合併，已有的一般檔案或別人的 script 一律不動、
+印 `CONFLICT` 交給使用者決定。
 
-把本 skill 的 [references/AGENTS.md](references/AGENTS.md) 接到各 agent 的
-全域 context 檔；各家 CLI 每個 session 自動載入自己的全域檔，接上即長期生效。
+## 步驟
 
-1. 取得來源檔 `references/AGENTS.md` 的絕對路徑。
-2. 逐列處理下表。agent 的目錄已存在才動作；目錄不存在代表沒裝這個 agent，
-   列入略過。全程不建立任何目錄——替沒安裝的 agent 造設定是錯誤，不是完成。
-
-   | Agent | 目標 | 接法 |
-   |-------|------|------|
-   | Claude Code | `~/.claude/CLAUDE.md` | 檔尾加一行 `@<來源絕對路徑>`（import） |
-   | Codex | `~/.codex/AGENTS.md` | symlink 指向來源 |
-   | Gemini CLI | `~/.gemini/GEMINI.md` | symlink 指向來源 |
-   | OpenCode | `~/.config/opencode/AGENTS.md` | symlink 指向來源 |
-   | Cline | `~/Documents/Cline/Rules/AGENTS.md` | symlink 指向來源 |
-
-3. 已接好的（import 行已存在、symlink 已指向來源）跳過，不重複加。
-4. 目標已有一般檔案（不是 symlink、也還沒 import）：不覆蓋，
-   列出請使用者決定——併入、改用 import、還是略過。
-5. 驗證並附輸出：symlink 用 `readlink` 確認指向來源、import 用 `grep`
-   確認該行存在；略過的 agent 用 `test -d` 確認目錄仍不存在。
-
-## 安裝 skills、接自動更新 hook
-
-6. 把本 repo 裝進使用者層級的 store（已裝過會更新成最新）：
+1. 執行並附完整輸出：
 
    ```bash
-   npx -y skills add tienyulin/kungfu-lite -g --all
+   bash <本 skill 目錄>/references/sync.sh --now
    ```
 
-   裝完 `~/.agents/skills/setup/references/sync.sh` 必須存在，
-   後面的 hook 都指向這個固定路徑。
-7. 逐列接 session 啟動 hook，安裝判斷同步驟 2。指令各家同一行：
-
-   ```bash
-   bash ~/.agents/skills/setup/references/sync.sh >/dev/null 2>&1 &
-   ```
-
-   sync.sh 以 `~/.cache/skills-update.stamp` 節流：每天第一個開啟的 session
-   在背景照清單裝一輪（全域安裝，所有 agent 同批更新），其餘 session 直接結束。
-
-   | Agent | 目標 | 接法 |
-   |-------|------|------|
-   | Claude Code | `~/.claude/settings.json` | `hooks.SessionStart` 陣列加下方 JSON 物件 |
-   | Gemini CLI | `~/.gemini/settings.json` | 同下方 JSON 物件，內層 hook 多加 `"name": "skills-update"` 欄 |
-   | Codex | `~/.codex/config.toml` | 檔尾加 `[[hooks.SessionStart]]` 區塊：`matcher = "*"`、`command` 為上列指令 |
-   | Cline | `~/Documents/Cline/Hooks/TaskStart` | 產生下方 script 並 `chmod +x`；`~/Documents/Cline` 存在才算已安裝，`Hooks/` 不存在就建 |
-
-   Claude Code 與 Gemini 的 hook 物件是兩層結構，照這個形狀放進
-   `hooks.SessionStart` 陣列，不省略外層：
-
-   ```json
-   { "matcher": "startup", "hooks": [{ "type": "command", "command": "<步驟 7 的指令>" }] }
-   ```
-
-   Cline 的 TaskStart 是一支可執行 script，stdin 要讀掉、stdout 必須是 JSON：
-
-   ```bash
-   #!/usr/bin/env bash
-   cat >/dev/null
-   bash ~/.agents/skills/setup/references/sync.sh >/dev/null 2>&1 &
-   echo '{"cancel": false}'
-   ```
-
-8. 設定檔一律讀入、修改、寫回（jq 或 python 皆可），保留既有的鍵與 hooks，
-   不整檔覆寫；目標檔不存在但 agent 目錄存在，就建只含這個 hook 的最小設定檔。
-   `sync.sh` 路徑已在檔中就跳過。無法無損合併——例如 Cline 的 TaskStart
-   已有別人的 script（每個 hook 只接受一支）——不動原檔，列出請使用者決定。
-   OpenCode 沒有指令型 hook，列入略過；安裝是全域的，
-   其他 agent 跑過它的 skills 就是新的。
-9. 跑第一次 sync 並附輸出（`--now` 略過節流；失敗的來源印 `FAILED:`，
-   記下錯誤原文，不中斷）：
-
-   ```bash
-   bash ~/.agents/skills/setup/references/sync.sh --now
-   ```
-
-10. 驗證並附輸出：接過的目標 `grep sync.sh` 確認 hook 已在檔中；
-    `ls -l ~/.cache/skills-update.stamp` 證明 stamp 已生成；
-    再跑一次不帶 `--now` 的 sync.sh，證明 stamp 未過期時直接結束不重裝。
+   （`--now` 略過節流。hook 之後每天跑的是 store 裡的同一支：
+   `~/.agents/skills/setup/references/sync.sh`。）
+2. 轉述輸出：`ok`／`linked` 是接好的，`skip` 是本機未安裝的 agent，
+   `FAILED:` 是安裝失敗的來源（附錯誤原文）。`CONFLICT` 逐條列給使用者
+   決定；使用者決定後照其指示手動處理，再重跑一次 sync.sh 收斂。
+3. 驗證並附輸出：再跑一次不帶 `--now` 的 sync.sh，證明 stamp 未過期時
+   直接結束；抽驗一個 symlink（`readlink`）與一個 hook
+   （`grep sync.sh <設定檔>`）。
 
 ## 回報
 
-列六類：守則已接上（附驗證輸出）、本機未安裝而略過的 agent、
-需要使用者決定的衝突、sync 裝到的 skill 來源（附輸出末段）、
-安裝失敗的來源（附錯誤原文）、自動更新 hook 接到哪幾家（附驗證輸出）。
-不產生其他檔案。
+依步驟 2 的分類回報，附步驟 1、3 的輸出。不產生其他檔案。
