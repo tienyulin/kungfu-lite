@@ -8,7 +8,9 @@ best practices。skill 可能在任何 agent 執行環境被載入，內容與�
 ## 結構
 
 - 一個 skill 一個資料夾：`skills/<name>/SKILL.md`，需要時加 `references/*.md`。
-  只用 markdown，不放 script、不設 hook。
+  預設只用 markdown，不放 script、不設 hook；只有無人值守的自動化
+  （沒有 agent 在場、純靠排程或 hook 執行）才允許附一支小 script，
+  且 SKILL.md 的步驟要能完整驗證它。
 - frontmatter 只有 `name`（小寫、連字號）與 `description` 兩欄。
 - SKILL.md 500 行內；放不下的內容依主題拆到 references——執行的 agent
   只會讀當下需要的那份。

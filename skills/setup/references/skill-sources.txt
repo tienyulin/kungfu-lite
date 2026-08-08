@@ -1,0 +1,7 @@
+# 團隊 skills 來源：一行一個 repo，sync.sh 逐行 `npx -y skills add <repo> -g --all`。
+# 接受 GitHub 縮寫（owner/repo）、完整 https URL、ssh URL（git@host:org/repo.git，
+# 需本機有該 server 的 ssh key）。沒裝的會裝上，裝過的會更新成最新。
+# 本 repo 也在清單內：sync.sh 與這份清單因此會自我更新。
+tienyulin/kungfu-lite
+obra/superpowers
+forrestchang/andrej-karpathy-skills
