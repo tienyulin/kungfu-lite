@@ -31,13 +31,16 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 
 ## 初始設定
 
-安裝完 skills 後，對任何一個 agent 說「幫我 setup」，它會照 `setup` 做兩件事：
+安裝完 skills 後，對任何一個 agent 說「幫我 setup」，它會照 `setup` 做三件事：
 
 1. 把 [skills/setup/references/AGENTS.md](skills/setup/references/AGENTS.md)
    （精簡的 agent 工作守則：證據、改動紀律、停下來的時機）接到本機所有
    偵測到的 agent 全域設定，之後每個 session 自動載入。
 2. 依 [skills/setup/references/skill-sources.md](skills/setup/references/skill-sources.md)
    的清單，把團隊選用的外部 skill repo 裝到使用者層級的所有 agent。
+3. 在各 agent 接一個 session 啟動 hook，每天第一個 session 自動
+   `npx skills update`——來源 repo 更新後，隔天所有 agent 就是新的，
+   不用另行通知。
 
 之後要加新的 skill 來源，改清單那份檔案再說一次「幫我 setup」即可。
 
