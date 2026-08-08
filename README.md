@@ -9,8 +9,11 @@
 ## 安裝
 
 ```bash
-npx skills add tienyulin/kungfu-lite
+npx -y skills add tienyulin/kungfu-lite -g --all
 ```
+
+（`-g` 裝到使用者層級：所有 agent 共用 `~/.agents/skills/` 的正本，
+setup 的自動更新也以這個位置為準。）
 
 只裝其中幾個：
 
@@ -34,7 +37,7 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 ## 初始設定
 
 安裝完 skills 後，對任何一個 agent 說「幫我 setup」（或自己跑
-`bash ~/.claude/skills/setup/scripts/sync.sh --now`），一次完成三件事：
+`bash ~/.agents/skills/setup/scripts/sync.sh --now`），一次完成三件事：
 
 1. 把 [skills/setup/assets/AGENTS.md](skills/setup/assets/AGENTS.md)
    （精簡的 agent 工作守則：證據、改動紀律、停下來的時機）接到本機所有
