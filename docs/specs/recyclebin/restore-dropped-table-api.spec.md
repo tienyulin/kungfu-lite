@@ -22,7 +22,7 @@
 
 **認證與授權**
 
-認證與角色授權由部署環境的 OAuth 機制統一處理，不在本規格與實作範圍內，不自建 API key、不自行驗證角色。本 API 限 DBA 使用，作為部署時的授權設定需求。操作者身分取自 OAuth 認證結果；mock 模式與本機測試以 header `X-Operator` 模擬，缺席或去除空白後為空時記為 `unknown`。
+認證與角色授權由部署環境的 OAuth 機制統一處理，不在本規格與實作範圍內，不自建 API key、不自行驗證角色。本 API 限 DBA 使用，作為部署時的授權設定需求。
 
 **Request 與 response 格式**
 
@@ -46,7 +46,7 @@
 }
 ```
 
-`details` 的形狀依 `error.status` 固定：欄位驗證失敗（422）用 `[{"fieldViolations": [{"field": "...", "description": "..."}]}]`（每個違規欄位一項），其餘用 `[{"reason": "...", "metadata": {}}]`。同一個 `error.status` 永遠用同一種形狀。Audit 不儲存 details 內容。
+`details` 的形狀依 `error.status` 固定：欄位驗證失敗（422）用 `[{"fieldViolations": [{"field": "...", "description": "..."}]}]`（每個違規欄位一項），其餘用 `[{"reason": "...", "metadata": {}}]`。同一個 `error.status` 永遠用同一種形狀。
 
 **錯誤代碼總表**
 
@@ -154,41 +154,18 @@
 
 *冪等性*：救回後該筆回收筒紀錄消失，再以相同參數執行會被擋下回 404 TABLE_NOT_IN_RECYCLEBIN；若原表隨後又被 DROP，則救回的是新紀錄，屬正常流程。
 
-*並發*：兩個 request 同時救回同一表時，先執行者成功、後執行者被擋下回 404 TABLE_NOT_IN_RECYCLEBIN（回收筒紀錄已消失）。若執行 FLASHBACK 時該筆紀錄已被另一請求救走，Oracle 回錯誤，映射為 404 TABLE_NOT_IN_RECYCLEBIN，audit 記 rejected:TABLE_NOT_IN_RECYCLEBIN。實作無額外並發防護，原因是 Oracle 的 FLASHBACK 操作原子性由資料庫保證，且回收筒紀錄唯一性由 Oracle 維護。
+*並發*：兩個 request 同時救回同一表時，先執行者成功、後執行者被擋下回 404 TABLE_NOT_IN_RECYCLEBIN（回收筒紀錄已消失）。若執行 FLASHBACK 時該筆紀錄已被另一請求救走，Oracle 回錯誤，映射為 404 TABLE_NOT_IN_RECYCLEBIN。實作無額外並發防護，原因是 Oracle 的 FLASHBACK 操作原子性由資料庫保證，且回收筒紀錄唯一性由 Oracle 維護。
 
-*執行中斷*：若 Oracle 在執行途中斷線或逾時，FLASHBACK 指令要嘛完全執行、要嘛完全未執行，不會停在中間狀態（由 Oracle 事務特性保證）。錯誤時回傳 503 DATABASE_CONNECTION_ERROR 或 504 DATABASE_TIMEOUT；DBA 可重新執行，系統會再次檢查表是否在回收筒、能否救回。Audit 記錄該次 request 的失敗狀態。
+*執行中斷*：若 Oracle 在執行途中斷線或逾時，FLASHBACK 指令要嘛完全執行、要嘛完全未執行，不會停在中間狀態（由 Oracle 事務特性保證）。錯誤時回傳 503 DATABASE_CONNECTION_ERROR 或 504 DATABASE_TIMEOUT；DBA 可重新執行，系統會再次檢查表是否在回收筒、能否救回。
 
 *耗時與時間*：sync 模式，預期耗時秒級內（取決於表大小與資料庫負載）。操作超過 60 秒時 Oracle 驅動將逾時，回傳 504。時間處理：截斷表示捨去小數部分，不進位；Oracle 回傳的時間視為 UTC，不做時區轉換。
 
-## 6. Audit
-
-除格式驗證失敗（422）外，每個 request 恰好記錄一筆 audit，包括被前置檢查擋下與基礎設施錯誤的情形。
-
-| 欄位 | 型別 | 說明 |
-|------|------|------|
-| operation_id | string | 唯一識別符（UUID） |
-| operator | string | 操作者身分。正式環境取自 OAuth 認證，忽略 X-Operator；僅 mock 模式讀 X-Operator header，缺席或去除空白後為空時記為 `unknown` |
-| operation | string | 操作名稱，固定為 `recyclebin_restore` |
-| target | string | 操作對象：`<schema>.<table_name>` |
-| request_params | object | 原始請求參數：`{"schema": "...", "table_name": "...", "new_table_name": "..."}` |
-| timestamp | string | request 處理完成時間，ISO 8601 格式 |
-| result | string | 結果枚舉：`success` / `rejected:<error.status>` / `error:<error.status>` |
-| error_status | string | 若 result 為 rejected 或 error，記錄對應的 error.status 值（純代碼，無前綴） |
-
-result 的值域及 error_status 對應：
-- `success`：表救回成功；error_status 空白
-- `rejected:INVALID_INPUT`：422、`rejected:SCHEMA_NOT_FOUND`：404、`rejected:TABLE_NOT_IN_RECYCLEBIN`：404、`rejected:TABLE_NOT_RESTORABLE`：409、`rejected:TABLE_NAME_CONFLICT`：409、`rejected:NEW_TABLE_NAME_EXISTS`：409
-- `error:DATABASE_CONNECTION_ERROR`：503、`error:DATABASE_TIMEOUT`：504、`error:RESTORE_VERIFICATION_FAILED`：500
-
-Audit 不儲存 details 內容。
-
-
-## 7. 架構與實作要求
+## 6. 架構與實作要求
 
 **三層架構**
 
 - **API 層**：`api/recyclebin.py`，路由定義與 request 驗證。
-- **Service 層**：`service/recyclebin_service.py`，業務規則（表名衝突判定、救回執行、驗證）、前置檢查順序、audit 記錄。
+- **Service 層**：`service/recyclebin_service.py`，業務規則（表名衝突判定、救回執行、驗證）與前置檢查順序。
 - **Repository 層**：`repository/recyclebin_repository.py` 與 `repository/recyclebin_repository_mock.py`，Oracle 連線與操作；mock 版本提供內記憶體實現，以 `MOCK_RECYCLEBIN` 環境變數切換。
 
 **Repository 介面**
@@ -290,35 +267,33 @@ Repository 不擲業務錯誤；查無資源回 None 或 False；Oracle 連線/�
 - Real 模式（`MOCK_RECYCLEBIN=false`）且缺少任一 Oracle 連線設定。
 - Real 模式下 Oracle 連線失敗（啟動時測試連線）。
 
-## 8. 測試案例
+## 7. 測試案例
 
 | # | 情境 | 輸入 | 預期結果 |
 |---|------|------|---------|
-| 1 | 以原名救回 | POST，`schema=scott, table_name=emp`（不給 new_table_name），原名未被佔用 | 200，`restored_table_name='EMP'`、audit result=success |
-| 2 | 改名救回 | POST，`schema=scott, table_name=emp, new_table_name=emp_restored`，原名被佔用 | 200，`restored_table_name='EMP_RESTORED'`、audit result=success |
-| 3 | 表不在回收筒 | POST，`schema=scott, table_name=nonexistent` | 404，TABLE_NOT_IN_RECYCLEBIN、audit result=rejected:TABLE_NOT_IN_RECYCLEBIN |
-| 4 | 救回後再執行 | POST，`schema=scott, table_name=emp`（已救回過、回收筒紀錄已消失） | 404，TABLE_NOT_IN_RECYCLEBIN、audit result=rejected:TABLE_NOT_IN_RECYCLEBIN |
-| 5 | 原名被佔用、未提供新名 | POST，`schema=scott, table_name=emp`（不給 new_table_name），原名被佔用 | 409，TABLE_NAME_CONFLICT、audit result=rejected:TABLE_NAME_CONFLICT |
-| 6 | 新表名衝突 | POST，`schema=scott, table_name=emp, new_table_name=existing_table`，新名與現有表同名 | 409，NEW_TABLE_NAME_EXISTS、audit result=rejected:NEW_TABLE_NAME_EXISTS |
-| 7 | 多筆同名紀錄 | POST，`schema=scott, table_name=emp`（被 DROP 多次、回收筒有多筆）| 200，救最新那一筆、audit result=success |
-| 8 | 表無法救回 | POST，`schema=scott, table_name=emp`，表在回收筒但空間已被回收 | 409，TABLE_NOT_RESTORABLE、details 的 reason=`SPACE_RECLAIMED`、`restored_table_name='EMP'`、audit result=rejected:TABLE_NOT_RESTORABLE |
-| 9 | Schema 不存在 | POST，`schema=nonexistent, table_name=emp` | 404，SCHEMA_NOT_FOUND、audit result=rejected:SCHEMA_NOT_FOUND |
-| 10 | 大小寫不敏感 | POST，`schema=scott, table_name=EMP`（大寫）| 200、救回成功、audit result=success |
-| 11 | Schema 為空 | POST，`schema=, table_name=emp` | 422，INVALID_INPUT（不記 audit） |
-| 12 | table_name 為空 | POST，`schema=scott, table_name=` | 422，INVALID_INPUT（不記 audit） |
+| 1 | 以原名救回 | POST，`schema=scott, table_name=emp`（不給 new_table_name），原名未被佔用 | 200，`restored_table_name='EMP'` |
+| 2 | 改名救回 | POST，`schema=scott, table_name=emp, new_table_name=emp_restored`，原名被佔用 | 200，`restored_table_name='EMP_RESTORED'` |
+| 3 | 表不在回收筒 | POST，`schema=scott, table_name=nonexistent` | 404，TABLE_NOT_IN_RECYCLEBIN |
+| 4 | 救回後再執行 | POST，`schema=scott, table_name=emp`（已救回過、回收筒紀錄已消失） | 404，TABLE_NOT_IN_RECYCLEBIN |
+| 5 | 原名被佔用、未提供新名 | POST，`schema=scott, table_name=emp`（不給 new_table_name），原名被佔用 | 409，TABLE_NAME_CONFLICT |
+| 6 | 新表名衝突 | POST，`schema=scott, table_name=emp, new_table_name=existing_table`，新名與現有表同名 | 409，NEW_TABLE_NAME_EXISTS |
+| 7 | 多筆同名紀錄 | POST，`schema=scott, table_name=emp`（被 DROP 多次、回收筒有多筆）| 200，救最新那一筆 |
+| 8 | 表無法救回 | POST，`schema=scott, table_name=emp`，表在回收筒但空間已被回收 | 409，TABLE_NOT_RESTORABLE、details 的 reason=`SPACE_RECLAIMED` |
+| 9 | Schema 不存在 | POST，`schema=nonexistent, table_name=emp` | 404，SCHEMA_NOT_FOUND |
+| 10 | 大小寫不敏感 | POST，`schema=scott, table_name=EMP`（大寫）| 200、救回成功 |
+| 11 | Schema 為空 | POST，`schema=, table_name=emp` | 422，INVALID_INPUT |
+| 12 | table_name 為空 | POST，`schema=scott, table_name=` | 422，INVALID_INPUT |
 | 13 | 救回成功後重複執行 | POST 同案例 1 的參數執行兩次 | 第一次 200 success，第二次 404 TABLE_NOT_IN_RECYCLEBIN |
-| 14 | Oracle 連線失敗 | POST 任意 request，monkeypatch repository 擲 InfraError(reason='connection') | 503，DATABASE_CONNECTION_ERROR、audit result=error:connection |
-| 15 | Oracle 逾時 | POST 任意 request，monkeypatch repository 擲 InfraError(reason='timeout') | 504，DATABASE_TIMEOUT、audit result=error:timeout |
+| 14 | Oracle 連線失敗 | POST 任意 request，monkeypatch repository 擲 InfraError(reason='connection') | 503，DATABASE_CONNECTION_ERROR |
+| 15 | Oracle 逾時 | POST 任意 request，monkeypatch repository 擲 InfraError(reason='timeout') | 504，DATABASE_TIMEOUT |
 | 16 | 時間格式驗證 | POST 成功 request | response 中 restore_time 為 ISO 8601、秒精度、無微秒、無時區後綴 |
 | 17 | 並發測試 | 兩個 thread/task 同時執行相同 POST request | 第一個 200 success，第二個 404 TABLE_NOT_IN_RECYCLEBIN |
-| 18 | 驗證失敗（資料庫異常） | POST 成功，monkeypatch 使驗證查詢回「表不存在」（FLASHBACK 未報錯但表查不到） | 500，RESTORE_VERIFICATION_FAILED、audit result=error:RESTORE_VERIFICATION_FAILED |
+| 18 | 驗證失敗（資料庫異常） | POST 成功，monkeypatch 使驗證查詢回「表不存在」（FLASHBACK 未報錯但表查不到） | 500，RESTORE_VERIFICATION_FAILED |
 
-## 9. 範圍外
+## 8. 範圍外
 
 - 救回後 index、trigger、constraint 的名稱仍為 Oracle 自動命名的暫時名（BIN$ 開頭），功能正常但名稱不整齊；由 DBA 事後自行改名，不在本 API 範圍。
 - 「以時間點回溯表內容」的 FLASHBACK 查詢功能是另一個操作，與回收筒救回無關。
 - 事前備份、隔離層級、事務隔離等進階 Oracle 特性不在本 API 範圍。
 
-## 10. 簽核
 
-簽核本文件即同意 Endpoint 一覽的範圍（單一 POST endpoint）、共通規範的防護方式（OAuth 認證、統一錯誤格式、8 個錯誤代碼）與範圍外的保留項目。本操作為可逆操作，可通過執行 `DROP TABLE` 復原。

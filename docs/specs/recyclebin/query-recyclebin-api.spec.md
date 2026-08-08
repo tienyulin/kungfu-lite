@@ -21,7 +21,7 @@
 
 **認證與授權**
 
-認證與角色授權由部署環境的 OAuth 機制統一處理，不在本規格與實作範圍內，不自建 API key、不自行驗證角色。本 API 限 DBA 使用，作為部署時的授權設定需求。操作者身分取自 OAuth 認證結果；mock 模式與本機測試以 header `X-Operator` 模擬，缺席或去除空白後為空時記為 `unknown`。
+認證與角色授權由部署環境的 OAuth 機制統一處理，不在本規格與實作範圍內，不自建 API key、不自行驗證角色。本 API 限 DBA 使用，作為部署時的授權設定需求。
 
 **Request 與 response 格式**
 
@@ -45,7 +45,7 @@
 }
 ```
 
-`details` 的形狀依 `error.status` 固定：欄位驗證失敗（422）用 `[{"fieldViolations": [{"field": "...", "description": "..."}]}]`（每個違規欄位一項），其餘用 `[{"reason": "...", "metadata": {}}]`。同一個 `error.status` 永遠用同一種形狀。Audit 不儲存 details 內容。
+`details` 的形狀依 `error.status` 固定：欄位驗證失敗（422）用 `[{"fieldViolations": [{"field": "...", "description": "..."}]}]`（每個違規欄位一項），其餘用 `[{"reason": "...", "metadata": {}}]`。同一個 `error.status` 永遠用同一種形狀。
 
 **錯誤代碼總表**
 
@@ -164,39 +164,16 @@ GET /recyclebin?schema=scott
 
 *並發*：兩個 request 同時查詢同一 schema 無防護需求，純讀取。
 
-*執行中斷*：外部系統在查詢途中斷線或逾時，回傳 503 DATABASE_CONNECTION_ERROR 或 504 DATABASE_TIMEOUT；查詢結果算失敗，audit 記錄對應 error status。
+*執行中斷*：外部系統在查詢途中斷線或逾時，回傳 503 DATABASE_CONNECTION_ERROR 或 504 DATABASE_TIMEOUT；查詢結果算失敗。
 
 *耗時與時間*：同步查詢，預期耗時秒級內（取決於回收筒大小）。查詢超過 30 秒時 Oracle 驅動將逾時，回傳 504。時間處理：截斷表示捨去小數部分，不進位；Oracle 回傳的時間視為 UTC，不做時區轉換。
 
-## 6. Audit
-
-除格式驗證失敗（422）外，每個 request 恰好記錄一筆 audit，包括被前置檢查擋下與基礎設施錯誤的情形。
-
-| 欄位 | 型別 | 說明 |
-|------|------|------|
-| operation_id | string | 唯一識別符（UUID） |
-| operator | string | 操作者身分。正式環境取自 OAuth 認證，忽略 X-Operator；僅 mock 模式讀 X-Operator header，缺席或去除空白後為空時記為 `unknown` |
-| operation | string | 操作名稱，固定為 `recyclebin_query` |
-| target | string | 操作對象：`<schema>` 或 `<schema>.<table_name>`（若有提供） |
-| request_params | object | 原始請求參數：`{"schema": "...", "table_name": "..."}` |
-| timestamp | string | request 處理完成時間，ISO 8601 格式 |
-| result | string | 結果枚舉：`success` / `rejected:<error.status>` / `error:<error.status>` |
-| error_status | string | 若 result 為 rejected 或 error，記錄對應的 error.status 值（純代碼，無前綴） |
-
-result 的值域及 error_status 對應：
-- `success`：操作成功（包括表不在回收筒的查詢成功情形）；error_status 空白
-- `rejected:INVALID_INPUT`：422、`rejected:SCHEMA_NOT_FOUND`：404
-- `error:DATABASE_CONNECTION_ERROR`：503、`error:DATABASE_TIMEOUT`：504
-
-Audit 不儲存 details 內容。
-
-
-## 7. 架構與實作要求
+## 6. 架構與實作要求
 
 **三層架構**
 
 - **API 層**：`api/recyclebin.py`，路由定義與 request 驗證。
-- **Service 層**：`service/recyclebin_service.py`，業務規則（大小寫轉換、回收筒查詢邏輯、結果組裝）、前置檢查、audit 記錄。
+- **Service 層**：`service/recyclebin_service.py`，業務規則（大小寫轉換、回收筒查詢邏輯、結果組裝）與前置檢查。
 - **Repository 層**：`repository/recyclebin_repository.py` 與 `repository/recyclebin_repository_mock.py`，Oracle 連線與查詢；mock 版本提供內記憶體實現，以 `MOCK_RECYCLEBIN` 環境變數切換。
 
 **Repository 介面**
@@ -291,7 +268,7 @@ Repository 不擲業務錯誤；查無資源回 None 或 []；Oracle 連線/逾�
 - Real 模式（`MOCK_RECYCLEBIN=false`）且缺少任一 Oracle 連線設定。
 - Real 模式下 Oracle 連線失敗（啟動時測試連線）。
 
-## 8. 測試案例
+## 7. 測試案例
 
 | # | 情境 | 輸入 | 預期結果 |
 |---|------|------|---------|
@@ -309,11 +286,9 @@ Repository 不擲業務錯誤；查無資源回 None 或 []；Oracle 連線/逾�
 | 12 | Oracle 逾時 | 任意 request，monkeypatch repository 擲 InfraError(reason='timeout') | 504，DATABASE_TIMEOUT |
 | 13 | 時間格式驗證 | 查詢含 drop_time 的 response | 時間為 ISO 8601、秒精度、無微秒、無時區後綴（例 `2026-08-08T14:30:45`） |
 
-## 9. 範圍外
+## 8. 範圍外
 
 - 查詢結果中的物件名本為 BIN$ 開頭的 Oracle 自動命名，功能上無需轉換或改名。
 - 以時間點回溯表內容的 FLASHBACK 查詢功能是另一個操作，不在本 API 範圍。
 
-## 10. 簽核
 
-簽核本文件即同意 Endpoint 一覽的範圍（單一 GET endpoint）、共通規範的防護方式（OAuth 認證、統一錯誤格式、4 個錯誤代碼）與範圍外的保留項目。
