@@ -1,0 +1,45 @@
+{
+  "comment": "各 agent 的接線定義，sync.sh 逐項讀。路徑用 ~ 開頭。新增 agent 加一項即可；rules_method 與 hook_method 不在既有值域時才需要改 sync.sh。rules_method：import＝檔尾加 @路徑 引入行、symlink＝指向 store 的守則正本。hook_method：json＝settings.json 的 hooks.SessionStart 無損合併、json-named＝同 json 且 hook 多 name 欄、toml＝config.toml 檔尾加 [[hooks.SessionStart]]、script＝產生可執行 script（如 Cline TaskStart）、none＝該 agent 無指令型 hook，跳過。",
+  "agents": [
+    {
+      "name": "claude",
+      "detect": "~/.claude",
+      "rules_target": "~/.claude/CLAUDE.md",
+      "rules_method": "import",
+      "hook_target": "~/.claude/settings.json",
+      "hook_method": "json"
+    },
+    {
+      "name": "codex",
+      "detect": "~/.codex",
+      "rules_target": "~/.codex/AGENTS.md",
+      "rules_method": "symlink",
+      "hook_target": "~/.codex/config.toml",
+      "hook_method": "toml"
+    },
+    {
+      "name": "gemini",
+      "detect": "~/.gemini",
+      "rules_target": "~/.gemini/GEMINI.md",
+      "rules_method": "symlink",
+      "hook_target": "~/.gemini/settings.json",
+      "hook_method": "json-named"
+    },
+    {
+      "name": "opencode",
+      "detect": "~/.config/opencode",
+      "rules_target": "~/.config/opencode/AGENTS.md",
+      "rules_method": "symlink",
+      "hook_target": "-",
+      "hook_method": "none"
+    },
+    {
+      "name": "cline",
+      "detect": "~/Documents/Cline",
+      "rules_target": "~/Documents/Cline/Rules/AGENTS.md",
+      "rules_method": "symlink",
+      "hook_target": "~/Documents/Cline/Hooks/TaskStart",
+      "hook_method": "script"
+    }
+  ]
+}

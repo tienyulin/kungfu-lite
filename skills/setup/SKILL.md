@@ -11,10 +11,10 @@ description: 一次完成本機的 agent 環境設定：把團隊工作守則接
 1. **接工作守則**：把 [references/AGENTS.md](references/AGENTS.md) 接到
    各 agent 的全域 context 檔，每個 session 自動載入。哪個 agent 接到
    哪個檔案、用 import 行還是 symlink，定義在
-   [references/agents.txt](references/agents.txt)，一行一個 agent。
+   [references/agents.json](references/agents.json)，一個 agent 一項。
 2. **接自動更新 hook**：在各 agent 接「跑 sync.sh」的 session 啟動 hook，
    目標與接法（settings.json 合併、TOML 附加、產生 script）同樣定義在
-   agents.txt。以 `~/.cache/skills-update.stamp` 節流：每天第一個開啟的
+   agents.json。以 `~/.cache/skills-update.stamp` 節流：每天第一個開啟的
    session 在背景收斂一輪，其餘 session 直接結束。無指令型 hook 的 agent
    （如 OpenCode）跳過——安裝是全域的，其他 agent 跑過它的 skills 就是新的。
 3. **安裝團隊 skills**：照 [references/skill-sources.txt](references/skill-sources.txt)

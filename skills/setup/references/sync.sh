@@ -2,7 +2,7 @@
 # setup 的執行本體：接工作守則、接各 agent 的 session 啟動 hook、
 # 照 skill-sources.txt 安裝／更新團隊 skills。冪等，重跑收斂到同一狀態；
 # 各 agent 的 hook 每天跑一次，stamp 檔節流，--now 略過節流。
-# 各 agent 的接線定義在 agents.txt；只在 agent 的偵測目錄已存在時動作，
+# 各 agent 的接線定義在 agents.json；只在 agent 的偵測目錄已存在時動作，
 # 無法無損處理的項目印 CONFLICT，不動原檔。
 # 輸出格式：<項目> <agent>: ok（已接好）| linked（本次接上）| skip | CONFLICT。
 set -u
@@ -43,8 +43,13 @@ print("linked")
 PY
 }
 
+python3 - "$here/agents.json" <<'PY' |
+import json, sys
+for a in json.load(open(sys.argv[1]))["agents"]:
+    print(a["name"], a["detect"], a["rules_target"], a["rules_method"],
+          a["hook_target"], a["hook_method"])
+PY
 while read -r name detect rtgt rmeth htgt hmeth; do
-  case "$name" in ''|\#*) continue ;; esac
   detect=$(expand "$detect"); rtgt=$(expand "$rtgt"); htgt=$(expand "$htgt")
   if [ ! -d "$detect" ]; then echo "$name: skip（未安裝）"; continue; fi
 
@@ -81,7 +86,7 @@ while read -r name detect rtgt rmeth htgt hmeth; do
         echo "hook $name: ok"
       fi ;;
   esac
-done < "$here/agents.txt"
+done
 
 # —— skills：沒裝的裝上、裝過的更新成 remote 最新 ——
 # 清單含本 repo，store（含本 script 與兩個定義檔）因此同批自我更新。
