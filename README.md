@@ -28,6 +28,22 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 `sop-author` 會讀 `../sop-to-spec/references/` 的共用規範（同一份範本只放一處），
 兩個要一起裝。
 
+## 工作守則
+
+[rules/AGENTS.md](rules/AGENTS.md) 是一份精簡的 agent 工作守則（證據、改動紀律、
+停下來的時機）。各家 CLI 都會自動載入自己的全域 context 檔，連結過去即可生效：
+
+```bash
+ln -s "$(pwd)/rules/AGENTS.md" ~/.codex/AGENTS.md
+ln -s "$(pwd)/rules/AGENTS.md" ~/.gemini/GEMINI.md
+```
+
+Claude Code 的 `~/.claude/CLAUDE.md` 通常已有自己的內容，用 import 引入：
+
+```bash
+echo "@$(pwd)/rules/AGENTS.md" >> ~/.claude/CLAUDE.md
+```
+
 ## 與 kungfu 完整版的差異
 
 - 檢查全部改成 SKILL.md 內的 grep/手動清單，不附 python script
