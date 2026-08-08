@@ -49,7 +49,7 @@ description: Convert an operations SOP (any domain — DBA runbooks, infra proce
 | Step | 內容 | 參考 |
 |------|------|------|
 | 0 合格檢查 | 逐份確認必要節齊全且非空：做什麼、誰可以用、輸入（或明寫「無」）、輸出、步驟（每步有「怎麼做」）、可能出什麼錯、測試例子。缺節就停下回報，請使用者用 `sop-author` 補完；使用者堅持照轉，缺的部分全部進未決事項 | — |
-| 1 整理 | 讀 SOP 列出：查詢類與變更類操作（對應 GET 與 POST/PUT/PATCH/DELETE）、前置條件、錯誤情況、audit 需求。這是工作草稿，不進 spec。順手檢查 SOP 前後矛盾，有就回報請作者修 | — |
+| 1 整理 | 讀 SOP 列出：查詢類與變更類操作（對應 GET 與 POST/PUT/PATCH/DELETE）、前置條件、錯誤情況。這是工作草稿，不進 spec。順手檢查 SOP 前後矛盾，有就回報請作者修 | — |
 | 2 風險判定 | 依 SOP「做了之後能復原嗎」判定查詢／可逆／不可逆，照原文結論，不自行升級 | [references/spec-template.md](references/spec-template.md) |
 | 3 寫 spec | 照模板十節依序寫；寫各 endpoint 規格時，每個 endpoint 過一遍追問清單 | [references/spec-template.md](references/spec-template.md)、[references/checklists.md](references/checklists.md) |
 | 4 自檢 | 跑完自檢清單，含幾項 grep 檢查 | [references/checklists.md](references/checklists.md) |
