@@ -24,17 +24,19 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 | [sop-to-spec](skills/sop-to-spec/SKILL.md) | 把 SOP 轉成正式的 API 規格書：主管讀前三節能看懂，工程師或 AI 讀全文能直接實作；含風險判定與盲審 |
 | [doc-author](skills/doc-author/SKILL.md) | 幫 repo 寫 README.md（對外使用文件，單檔自足）與 `docs/ARCHITECTURE.md`（給維護者與 AI 的架構文件），API repo 另附 openapi.json |
 | [skill-author](skills/skill-author/SKILL.md) | 依團隊標準撰寫或改寫 skill：文字自然、描述欄位通過觸發測試、自檢機器化、試跑通過才交付 |
-| [setup-rules](skills/setup-rules/SKILL.md) | 把工作守則接到本機各 agent 的全域設定，每個 session 自動載入 |
+| [working-rules](skills/working-rules/SKILL.md) | 通用工作守則：精華寫在描述欄位，隨每個 session 自動載入，裝完即生效 |
+| [setup-rules](skills/setup-rules/SKILL.md) | 把工作守則正本接到各 agent 的全域設定（不依賴 skills 機制的接法） |
 
 `sop-author` 會讀 `../sop-to-spec/references/` 的共用規範（同一份範本只放一處），
 兩個要一起裝。
 
 ## 工作守則
 
-[skills/setup-rules/references/AGENTS.md](skills/setup-rules/references/AGENTS.md)
-是一份精簡的 agent 工作守則（證據、改動紀律、停下來的時機）。安裝完 skills 後，
-對任何一個 agent 說「幫我裝工作守則」，它會照 `setup-rules` 把守則接到本機
-所有偵測到的 agent 全域設定。
+守則正本在 [skills/working-rules/references/AGENTS.md](skills/working-rules/references/AGENTS.md)。
+`npx skills add` 裝完即生效：working-rules 把守則精華放在描述欄位，
+各 agent 每個 session 都會預載。想改接到全域 context 檔（不佔 skills 清單、
+不支援 skills 的工具也吃得到），對任何一個 agent 說「幫我裝工作守則」，
+它會照 `setup-rules` 處理。
 
 ## 與 kungfu 完整版的差異
 
