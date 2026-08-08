@@ -5,19 +5,19 @@ description: 一次完成本機的 agent 環境設定：把團隊工作守則接
 
 # 環境設定
 
-執行本體是 [references/sync.sh](references/sync.sh)：一支冪等的 script，
+執行本體是 [scripts/sync.sh](scripts/sync.sh)：一支冪等的 script，
 跑一次就完成全部設定，重跑收斂到同一狀態。它做三件事——
 
-1. **接工作守則**：把 [references/AGENTS.md](references/AGENTS.md) 接到
+1. **接工作守則**：把 [assets/AGENTS.md](assets/AGENTS.md) 接到
    各 agent 的全域 context 檔，每個 session 自動載入。哪個 agent 接到
    哪個檔案、用 import 行還是 symlink，定義在
-   [references/agents.json](references/agents.json)，一個 agent 一項。
+   [assets/agents.json](assets/agents.json)，一個 agent 一項。
 2. **接自動更新 hook**：在各 agent 接「跑 sync.sh」的 session 啟動 hook，
    目標與接法（settings.json 合併、TOML 附加、產生 script）同樣定義在
    agents.json。以 `~/.cache/skills-update.stamp` 節流：每天第一個開啟的
    session 在背景收斂一輪，其餘 session 直接結束。無指令型 hook 的 agent
    （如 OpenCode）跳過——安裝是全域的，其他 agent 跑過它的 skills 就是新的。
-3. **安裝團隊 skills**：照 [references/skill-sources.txt](references/skill-sources.txt)
+3. **安裝團隊 skills**：照 [assets/skill-sources.txt](assets/skill-sources.txt)
    逐列 `npx -y skills add <repo> -g --all`，沒裝的裝上、裝過的更新成
    remote 最新。清單含本 repo，sync.sh 與兩個定義檔因此每天自我更新；
    之後新裝的 agent、新支援的 agent 定義，隔天都自動生效。
@@ -31,11 +31,11 @@ description: 一次完成本機的 agent 環境設定：把團隊工作守則接
 1. 執行並附完整輸出：
 
    ```bash
-   bash <本 skill 目錄>/references/sync.sh --now
+   bash <本 skill 目錄>/scripts/sync.sh --now
    ```
 
    （`--now` 略過節流。hook 之後每天跑的是 store 裡的同一支：
-   `~/.agents/skills/setup/references/sync.sh`。）
+   `~/.agents/skills/setup/scripts/sync.sh`。）
 2. 轉述輸出：`ok`／`linked` 是接好的，`skip` 是本機未安裝的 agent，
    `FAILED:` 是安裝失敗的來源（附錯誤原文）。`CONFLICT` 逐條列給使用者
    決定；使用者決定後照其指示手動處理，再重跑一次 sync.sh 收斂。

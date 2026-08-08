@@ -7,9 +7,9 @@
 # 輸出格式：<項目> <agent>: ok（已接好）| linked（本次接上）| skip | CONFLICT。
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
-STORE="$HOME/.agents/skills/setup/references"
-RULES="$STORE/AGENTS.md"
-SYNC="$STORE/sync.sh"
+STORE="$HOME/.agents/skills/setup"
+RULES="$STORE/assets/AGENTS.md"
+SYNC="$STORE/scripts/sync.sh"
 HOOK_CMD="bash $SYNC >/dev/null 2>&1 &"
 STAMP="$HOME/.cache/skills-update.stamp"
 
@@ -43,7 +43,7 @@ print("linked")
 PY
 }
 
-python3 - "$here/agents.json" <<'PY' |
+python3 - "$here/../assets/agents.json" <<'PY' |
 import json, sys
 for a in json.load(open(sys.argv[1]))["agents"]:
     print(a["name"], a["detect"], a["rules_target"], a["rules_method"],
@@ -91,6 +91,6 @@ done
 # —— skills：沒裝的裝上、裝過的更新成 remote 最新 ——
 # 清單含本 repo，store（含本 script 與兩個定義檔）因此同批自我更新。
 # 這段必須留在檔案最後：覆蓋執行中的自己才安全。
-for repo in $(grep -vE '^[[:space:]]*(#|$)' "$here/skill-sources.txt"); do
+for repo in $(grep -vE '^[[:space:]]*(#|$)' "$here/../assets/skill-sources.txt"); do
   npx -y skills add "$repo" -g --all </dev/null || echo "FAILED: $repo" >&2
 done

@@ -2,7 +2,7 @@
 
 輕量版 agent skills：`SKILL.md`＋必要的 `references/*.md`，
 **無 plugin 架構、無 pre-commit、無 marketplace**；唯一的 script 是
-`setup` 附的十幾行 [sync.sh](skills/setup/references/sync.sh)（skills 安裝與
+`setup` 附的十幾行 [sync.sh](skills/setup/scripts/sync.sh)（skills 安裝與
 每日自動更新）。完整版（含機器 lint、pre-commit、marketplace）
 在 [kungfu](https://github.com/tienyulin/kungfu)。
 
@@ -34,15 +34,15 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 ## 初始設定
 
 安裝完 skills 後，對任何一個 agent 說「幫我 setup」（或自己跑
-`bash ~/.claude/skills/setup/references/sync.sh --now`），一次完成三件事：
+`bash ~/.claude/skills/setup/scripts/sync.sh --now`），一次完成三件事：
 
-1. 把 [skills/setup/references/AGENTS.md](skills/setup/references/AGENTS.md)
+1. 把 [skills/setup/assets/AGENTS.md](skills/setup/assets/AGENTS.md)
    （精簡的 agent 工作守則：證據、改動紀律、停下來的時機）接到本機所有
    偵測到的 agent 全域設定，之後每個 session 自動載入。
-2. 依 [skills/setup/references/skill-sources.txt](skills/setup/references/skill-sources.txt)
+2. 依 [skills/setup/assets/skill-sources.txt](skills/setup/assets/skill-sources.txt)
    的清單，把團隊選用的 skill repo 裝到使用者層級的所有 agent。
 3. 在各 agent 接一個 session 啟動 hook，每天第一個 session 在背景
-   重跑同一支 [sync.sh](skills/setup/references/sync.sh) 收斂一輪——
+   重跑同一支 [sync.sh](skills/setup/scripts/sync.sh) 收斂一輪——
    之後在清單加新來源、更新任何 skill、甚至新裝一個 agent，
    push 完隔天所有機器自動就是新的，不用另行通知。
 
