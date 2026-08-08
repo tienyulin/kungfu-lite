@@ -234,6 +234,7 @@ grep -nE '(\.\./|見 |參考 |see |curl |https?://)' README.md
 命中內部引用就把內容直接寫進來；命中 curl 或 URL 就改成 `METHOD /path` 加
 body 範例。命中數必須改到零，沒有例外——啟動指令、Swagger 位址這類內容屬於
 ARCHITECTURE.md 的開發節，不屬於 README。末尾指路行不含這些 pattern，不會誤中。
+grep 抓不到所有寫法，掃完再通讀一次，確認沒有任何地方要讀者去看 repo 內的檔案。
 
 盤點完整性檢查（有 openapi.json 才適用）：README 的功能節數要等於 openapi 的
 operation 總數。
@@ -247,8 +248,8 @@ grep -cE '^\`(GET|POST|PUT|DELETE|PATCH) ' README.md
 某個 endpoint 時，在 Step 5 的「略去的節」點名它並說明原因。
 
 錯誤碼覆蓋檢查（雙向）：code 裡回傳或 raise 的錯誤碼，README 要逐一寫到；
-README 寫的錯誤碼也要在 code 裡 grep 得到，多出來的就是編造。pattern 換成
-該 repo 的錯誤碼形式（如 `ORA-[0-9]+` 或 SCREAMING_SNAKE 常數）：
+README 寫的錯誤碼也要在 code 裡 grep 得到，多出來的就是編造。pattern 與掃描目錄
+都換成該 repo 的實際情況（pattern 如 `ORA-[0-9]+` 或 SCREAMING_SNAKE 常數）：
 
 ```bash
 grep -rhoE 'ORA-[0-9]+' services/ repository/ models/ | sort -u   # code 有的
@@ -264,8 +265,8 @@ grep -oE 'ORA-[0-9]+' README.md | sort -u                          # 文件寫�
 - 各步檢查全部通過：地標檢查（含行號 grep）、README 自足與風格、盤點完整性、
   錯誤碼雙向、openapi 完整度（適用時）。
 - glossary 禁用寫法掃描：glossary「文件裡怎麼寫」欄標明不用的變體逐一 grep
-  兩份文件（例 `grep -nE '預演|乾跑|模擬模式|端點介面' README.md docs/ARCHITECTURE.md`），
-  命中就改成 glossary 的寫法。
+  兩份文件（例 `grep -nE '模擬模式|假資料模式|端點介面' README.md docs/ARCHITECTURE.md`，
+  pattern 照 glossary 現況組），命中就改成 glossary 的寫法。
 - 行為描述抽三條對回 code，優先抽容易寫反的：預設值、身分與權限、HTTP 動詞。
   逐字對回出處，對不上的就是想當然，回去修。
 
