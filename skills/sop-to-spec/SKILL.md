@@ -1,6 +1,6 @@
 ---
 name: sop-to-spec
-description: 把人工操作的 SOP（任何領域——DBA 手冊、機房程序、部署清單）轉成正式的 API 規格書：主管讀前三節能看懂，工程師或 AI 讀全文能直接實作三層式 FastAPI 服務。Triggers - "SOP 轉 spec"、"convert SOP"、"/sop-to-spec <path>"，或使用者想把程序文件變成 API 時。
+description: 把人工操作的 SOP 轉成正式的 API 規格書，含風險判定、自檢與盲審；不懂技術的人讀前三節能了解用途與風險，工程師或 AI 讀全文能直接實作三層式 FastAPI 服務。使用者要把 SOP 或程序文件轉成 API 規格時使用，任何領域的 SOP 都適用。
 ---
 
 # SOP 轉 Spec

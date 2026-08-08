@@ -1,6 +1,6 @@
 ---
 name: sop-author
-description: 訪談 PM，把粗略需求或不合規文件整理成合規 SOP。逐節用日常語言提問，不代替使用者做業務判斷，沒答的標「假設，待確認」，產出 docs/sops/<組名>/<功能>.md 供 sop-to-spec 轉規格。Triggers - "寫 SOP"、"SOP 訪談"、"把需求整理成 SOP"、"/sop-author <描述或檔案>"，或 sop-to-spec 判定輸入不是合格 SOP 時。
+description: 透過訪談把粗略的需求描述整理成合規的 SOP，產出到 docs/sops/ 供 sop-to-spec 轉成規格；業務判斷只來自受訪者，沒有答案的項目標「假設，待確認」。使用者要寫 SOP、做 SOP 訪談、把需求整理成 SOP，或 sop-to-spec 判定輸入不合格時使用。
 ---
 
 # SOP 訪談

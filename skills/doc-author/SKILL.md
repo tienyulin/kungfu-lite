@@ -1,6 +1,6 @@
 ---
 name: doc-author
-description: 幫一個 repo 寫出「人與 AI 都讀得懂」的兩份文件 —— README.md（門面：API/工具怎麼用，單檔自足、可上傳文件平台）＋ docs/ARCHITECTURE.md（架構文件：AI 讀完不用重掃 repo 就能動工的系統地圖）。API repo 另附 openapi.json（從 code 匯出，不手抄）。新舊專案通用。Triggers - "寫 repo 文件"、"補 README"、"寫使用文件"、"寫 architecture 文件"、"author docs"、"fix my openapi"、"/doc-author"。
+description: 幫一個 repo 寫兩份文件：README.md 是給使用者的使用文件，單檔自足、可整份上傳文件平台；docs/ARCHITECTURE.md 是給維護者與 AI 的架構文件。HTTP API 專案另從 code 匯出 openapi.json。使用者要寫或補 repo 文件、README、使用文件、架構文件、openapi 時使用，新舊專案都適用。
 ---
 
 # doc-author
