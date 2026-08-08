@@ -1,6 +1,6 @@
 ---
 name: skill-author
-description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 references，文字自然、描述欄位通過觸發測試、自檢機器化、弱模型試跑後才交付。使用者要寫新的 skill、建 skill、改 skill、review skill 品質時使用。
+description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 references，文字自然、描述欄位通過觸發測試、自檢機器化、試跑通過才交付。使用者要寫新的 skill、建 skill、改 skill、review skill 品質時使用。
 ---
 
 # Skill 撰寫
@@ -45,7 +45,7 @@ description: 依團隊標準撰寫或改寫 agent skill：SKILL.md 加必要的 
 
 1. 準備八到十二句使用者講法：真實講法、換句話說的變形、不含關鍵詞的講法，
    以及至少三句容易誤觸發的相鄰任務當負對照。
-2. 環境能開 subagent 時：spawn 兩個獨立的 subagent，模型挑環境裡可用的最弱一個，
+2. 環境能開 subagent 時：spawn 兩個獨立的 subagent，挑最小的可用模型，
    prompt 只給「已安裝 skill 的名稱與描述清單＋逐句判斷該用哪個 skill 或 none」，
    兩個都答對才算過。不能開時：自己逐句判斷並記下理由，交付回報註明為自我判定，
    建議之後在能開 subagent 的環境重測。
@@ -61,8 +61,8 @@ SKILL.md 500 行內、references 只有一層。
 
 skill 讀起來通順不等於執行得起來：
 
-- 環境能開 subagent 時：用可用的最弱模型試跑一個貼近真實的任務——弱模型最會
-  暴露 skill 的漏洞，它跑得起來，更強的模型只會更好。親自驗收產出：
+- 環境能開 subagent 時：用最小的可用模型試跑一個貼近真實的任務——它跑得起來，
+  其他模型都跑得起來。親自驗收產出：
   宣稱通過的檢查要求貼指令的逐字輸出，不收一句「已通過」。
 - 不能開時：自己照新 skill 從頭執行同樣的任務，嚴格照字面走、不靠寫作時的
   記憶補位；每個檢查實際執行並保留輸出。交付回報註明為自我驗證。
