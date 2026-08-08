@@ -24,25 +24,17 @@ npx skills add tienyulin/kungfu-lite --skill doc-author
 | [sop-to-spec](skills/sop-to-spec/SKILL.md) | 把 SOP 轉成正式的 API 規格書：主管讀前三節能看懂，工程師或 AI 讀全文能直接實作；含風險判定與盲審 |
 | [doc-author](skills/doc-author/SKILL.md) | 幫 repo 寫 README.md（對外使用文件，單檔自足）與 `docs/ARCHITECTURE.md`（給維護者與 AI 的架構文件），API repo 另附 openapi.json |
 | [skill-author](skills/skill-author/SKILL.md) | 依團隊標準撰寫或改寫 skill：文字自然、描述欄位通過觸發測試、自檢機器化、試跑通過才交付 |
+| [setup-rules](skills/setup-rules/SKILL.md) | 把工作守則接到本機各 agent 的全域設定，每個 session 自動載入 |
 
 `sop-author` 會讀 `../sop-to-spec/references/` 的共用規範（同一份範本只放一處），
 兩個要一起裝。
 
 ## 工作守則
 
-[rules/AGENTS.md](rules/AGENTS.md) 是一份精簡的 agent 工作守則（證據、改動紀律、
-停下來的時機）。各家 CLI 都會自動載入自己的全域 context 檔，連結過去即可生效：
-
-```bash
-ln -s "$(pwd)/rules/AGENTS.md" ~/.codex/AGENTS.md
-ln -s "$(pwd)/rules/AGENTS.md" ~/.gemini/GEMINI.md
-```
-
-Claude Code 的 `~/.claude/CLAUDE.md` 通常已有自己的內容，用 import 引入：
-
-```bash
-echo "@$(pwd)/rules/AGENTS.md" >> ~/.claude/CLAUDE.md
-```
+[skills/setup-rules/references/AGENTS.md](skills/setup-rules/references/AGENTS.md)
+是一份精簡的 agent 工作守則（證據、改動紀律、停下來的時機）。安裝完 skills 後，
+對任何一個 agent 說「幫我裝工作守則」，它會照 `setup-rules` 把守則接到本機
+所有偵測到的 agent 全域設定。
 
 ## 與 kungfu 完整版的差異
 
