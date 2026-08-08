@@ -1,18 +1,17 @@
 ---
 name: setup-rules
-description: 把團隊工作守則安裝到本機各 agent 的全域設定，讓每個 session 自動載入。使用者要裝工作守則、安裝守則、setup rules、把守則套用到所有 agent 時使用。
+description: 把團隊工作守則（references/AGENTS.md）安裝到本機各 agent 的全域設定，讓每個 session 自動載入。使用者要裝工作守則、安裝守則、setup rules、把守則套用到所有 agent 時使用。
 ---
 
 # 安裝工作守則
 
-把工作守則正本（[../working-rules/references/AGENTS.md](../working-rules/references/AGENTS.md)，
-與 working-rules 一起安裝）接到本機各個 agent 的全域 context 檔。各家 CLI 每個 session 會自動載入自己的全域檔，
+把本 skill 附帶的 [references/AGENTS.md](references/AGENTS.md) 接到本機各個
+agent 的全域 context 檔。各家 CLI 每個 session 會自動載入自己的全域檔，
 接上後守則即長期生效。
 
 ## 步驟
 
-1. 確認來源檔存在：`../working-rules/references/AGENTS.md`，取得絕對路徑；
-   不存在表示 working-rules 未安裝，停下請使用者先安裝。
+1. 確認來源檔存在：本 skill 目錄下的 `references/AGENTS.md`，取得絕對路徑。
 2. 逐一檢查下表的目標。只在目標所在目錄已存在時動作；目錄不存在代表
    該 agent 沒安裝，列入略過。全程不建立任何目錄——建了目錄等於
    替沒安裝的 agent 造設定，是錯誤不是完成。
